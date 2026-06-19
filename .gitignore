@@ -1,0 +1,25 @@
+# Rust
+record-api/target/
+
+# Flutter
+record-app/build/
+record-app/.dart_tool/
+record-app/.flutter-plugins
+record-app/.flutter-plugins-dependencies
+record-app/android/.gradle/
+record-app/android/local.properties
+record-app/android/app/build/
+record-app/ios/Pods/
+record-app/ios/.symlinks/
+record-app/pubspec.lock
+
+# Web
+record-web/node_modules/
+record-web/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
