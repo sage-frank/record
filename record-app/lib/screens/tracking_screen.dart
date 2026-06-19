@@ -41,12 +41,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
     }
   }
 
-  void _showUploadResult(bool success) {
+  void _showUploadResult(bool success, [String? errorMsg]) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(success ? '上传成功！' : '上传失败，请稍后重试'),
+        content: Text(success ? '上传成功！' : (errorMsg ?? '上传失败，请稍后重试')),
         backgroundColor: success ? Colors.green : Colors.red,
+        duration: Duration(seconds: success ? 2 : 4),
       ),
     );
     if (success) Navigator.pop(context);
@@ -138,10 +139,15 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       onPressed: () async {
                         Navigator.pop(ctx);
                         setState(() => _isUploading = true);
-                        final success =
-                            await locService.stopAndUpload(apiService);
-                        setState(() => _isUploading = false);
-                        _showUploadResult(success);
+                        try {
+                          final success =
+                              await locService.stopAndUpload(apiService);
+                          setState(() => _isUploading = false);
+                          _showUploadResult(success);
+                        } catch (e) {
+                          setState(() => _isUploading = false);
+                          _showUploadResult(false, e.toString());
+                        }
                       },
                       child: const Text('结束并上传'),
                     ),
@@ -159,10 +165,15 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   ? null
                   : () async {
                       setState(() => _isUploading = true);
-                      final success =
-                          await locService.stopAndUpload(apiService);
-                      setState(() => _isUploading = false);
-                      _showUploadResult(success);
+                      try {
+                        final success =
+                            await locService.stopAndUpload(apiService);
+                        setState(() => _isUploading = false);
+                        _showUploadResult(success);
+                      } catch (e) {
+                        setState(() => _isUploading = false);
+                        _showUploadResult(false, e.toString());
+                      }
                     },
             ),
         ],
@@ -317,10 +328,15 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         color: Colors.red,
                         onPressed: () async {
                           setState(() => _isUploading = true);
-                          final success =
-                              await locService.stopAndUpload(apiService);
-                          setState(() => _isUploading = false);
-                          _showUploadResult(success);
+                          try {
+                            final success =
+                                await locService.stopAndUpload(apiService);
+                            setState(() => _isUploading = false);
+                            _showUploadResult(success);
+                          } catch (e) {
+                            setState(() => _isUploading = false);
+                            _showUploadResult(false, e.toString());
+                          }
                         },
                       ),
                     ],
