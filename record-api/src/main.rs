@@ -27,6 +27,7 @@ async fn main() {
         .route("/api/track-points/batch", axum::routing::post(add_track_points_batch))
         .route("/api/sessions", get(get_sessions))
         .route("/api/sessions/{id}/track-points", get(get_session_track_points))
+        .route("/api/sessions/{id}/stats", get(get_session_stats))
         .route("/api/sessions/{id}", axum::routing::delete(delete_session))
         .layer(cors)
         .with_state(state);

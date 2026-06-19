@@ -4,6 +4,7 @@ import {
   TileLayer,
   Polyline,
   Marker,
+  Popup,
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
@@ -27,11 +28,24 @@ interface TrackPoint {
   longitude: number;
   altitude: number | null;
   speed: number | null;
+  steps: number | null;
   timestamp: string;
+}
+
+interface SessionStats {
+  session_id: string;
+  point_count: number;
+  total_steps: number;
+  start_time: string;
+  last_latitude: number;
+  last_longitude: number;
+  last_timestamp: string;
 }
 
 interface Props {
   points: TrackPoint[];
+  showLiveStats?: boolean;
+  sessionStats?: SessionStats | null;
 }
 
 // 自动适配地图视野
@@ -48,7 +62,7 @@ function MapBoundsUpdater({ points }: { points: [number, number][] }) {
   return null;
 }
 
-export default function TrackMap({ points }: Props) {
+export default function TrackMap({ points, showLiveStats, sessionStats }: Props) {
   const positions: [number, number][] = useMemo(
     () => points.map((p) => [p.latitude, p.longitude]),
     [points],
@@ -59,7 +73,7 @@ export default function TrackMap({ points }: Props) {
       ? positions[Math.floor(positions.length / 2)]
       : [39.9042, 116.4074];
 
-  // 起点和终点标记样式
+  // 起点标记样式
   const startIcon = L.divIcon({
     className: '',
     html: '<div style="background:#52c41a;width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow:0 0 4px rgba(0,0,0,0.3)"></div>',
@@ -67,11 +81,20 @@ export default function TrackMap({ points }: Props) {
     iconAnchor: [8, 8],
   });
 
+  // 终点/实时位置标记样式
   const endIcon = L.divIcon({
     className: '',
-    html: '<div style="background:#ff4d4f;width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow:0 0 4px rgba(0,0,0,0.3)"></div>',
-    iconSize: [16, 16],
-    iconAnchor: [8, 8],
+    html: '<div style="background:#ff4d4f;width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 0 6px rgba(255,0,0,0.5);animation:pulse 1.5s infinite"></div>',
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+  });
+
+  // 中间点标记
+  const pointIcon = L.divIcon({
+    className: '',
+    html: '<div style="background:#1677ff;width:6px;height:6px;border-radius:50%;border:1px solid white"></div>',
+    iconSize: [10, 10],
+    iconAnchor: [5, 5],
   });
 
   return (
@@ -97,15 +120,60 @@ export default function TrackMap({ points }: Props) {
 
       {/* 起点标记 */}
       {positions.length > 0 && (
-        <Marker position={positions[0]} icon={startIcon} />
+        <Marker position={positions[0]} icon={startIcon}>
+          <Popup>起点</Popup>
+        </Marker>
       )}
 
-      {/* 终点标记 */}
+      {/* 终点/实时位置标记 */}
       {positions.length > 1 && (
-        <Marker position={positions[positions.length - 1]} icon={endIcon} />
+        <Marker
+          position={positions[positions.length - 1]}
+          icon={endIcon}
+        >
+          <Popup>
+            <div>
+              <b>{showLiveStats ? '实时位置' : '终点'}</b>
+              <br />
+              步数: {points[points.length - 1]?.steps ?? 0}
+              <br />
+              时间: {points[points.length - 1]?.timestamp ?? '--'}
+            </div>
+          </Popup>
+        </Marker>
       )}
 
-      {/* 自动调整视野 */}
+      {/* 中间点（仅显示最近几个） */}
+      {positions.length > 3 &&
+        positions.slice(-5, -1).map((pos, i) => (
+          <Marker key={i} position={pos} icon={pointIcon}>
+            <Popup>
+              步数: {points[points.length - 5 + i]?.steps ?? 0}
+            </Popup>
+          </Marker>
+        ))}
+
+      {/* 实时统计浮层 */}
+      {showLiveStats && sessionStats && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 10,
+            right: 10,
+            zIndex: 1000,
+            background: 'rgba(255,255,255,0.95)',
+            padding: '8px 12px',
+            borderRadius: 8,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            fontSize: 12,
+          }}
+        >
+          <div>📍 位置: {sessionStats.last_latitude.toFixed(5)}, {sessionStats.last_longitude.toFixed(5)}</div>
+          <div>👣 步数: {sessionStats.total_steps}</div>
+          <div>📊 点数: {sessionStats.point_count}</div>
+        </div>
+      )}
+
       <MapBoundsUpdater points={positions} />
     </MapContainer>
   );

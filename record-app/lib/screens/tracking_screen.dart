@@ -16,13 +16,28 @@ class TrackingScreen extends StatefulWidget {
 class _TrackingScreenState extends State<TrackingScreen> {
   final _mapController = MapController();
   bool _isUploading = false;
+  String _permissionMsg = '';
 
   @override
   void initState() {
     super.initState();
     final locService = context.read<LocationService>();
+    final apiService = context.read<ApiService>();
     if (locService.state == RecordingState.idle) {
-      locService.startRecording();
+      _startWithPermission(locService, apiService);
+    }
+  }
+
+  Future<void> _startWithPermission(
+      LocationService locService, ApiService api) async {
+    final result = await locService.startRecording(api);
+    if (!mounted) return;
+    if (result != 'ok') {
+      setState(() => _permissionMsg = result);
+      // 权限失败后延迟返回
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) Navigator.pop(context);
+      });
     }
   }
 
@@ -43,6 +58,40 @@ class _TrackingScreenState extends State<TrackingScreen> {
     final apiService = context.read<ApiService>();
     final track = locService.currentTrack;
 
+    // 权限检查中或失败
+    if (!locService.permissionChecked || _permissionMsg.isNotEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('跑步中')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (!locService.permissionChecked)
+                const Column(
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('正在获取位置权限...'),
+                  ],
+                )
+              else ...[
+                const Icon(Icons.location_off, size: 48, color: Colors.red),
+                const SizedBox(height: 16),
+                Text(_permissionMsg,
+                    style: const TextStyle(fontSize: 16),
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 24),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('返回'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
     // 计算地图中心点
     LatLng mapCenter;
     double mapZoom;
@@ -54,11 +103,11 @@ class _TrackingScreenState extends State<TrackingScreen> {
       mapCenter = LatLng(avgLat, avgLng);
       mapZoom = 16;
     } else {
-      mapCenter = const LatLng(39.9042, 116.4074); // 默认北京
-      mapZoom = 12;
+      mapCenter = const LatLng(39.9042, 116.4074);
+      mapZoom = 14;
     }
 
-    // 地图中心变化时自动跟随
+    // 地图跟随最新位置
     if (track.isNotEmpty) {
       final last = track.last;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -135,7 +184,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.record.app',
                 ),
-                // 轨迹线
                 if (track.length >= 2)
                   PolylineLayer(
                     polylines: [
@@ -148,7 +196,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       ),
                     ],
                   ),
-                // 起点标记
                 if (track.isNotEmpty)
                   MarkerLayer(
                     markers: [
@@ -199,39 +246,64 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _buildMetric(
-                      context,
                       icon: Icons.route,
                       label: '距离 (km)',
                       value: locService.totalDistance.toStringAsFixed(2),
                     ),
                     _buildMetric(
-                      context,
                       icon: Icons.timer,
                       label: '时间',
                       value: _formatDuration(locService.elapsed),
                     ),
                     _buildMetric(
-                      context,
                       icon: Icons.speed,
                       label: '配速',
                       value: locService.pace,
                     ),
                     _buildMetric(
-                      context,
-                      icon: Icons.gps_fixed,
-                      label: '点数',
-                      value: '${track.length}',
+                      icon: Icons.directions_walk,
+                      label: '步数',
+                      value: '${locService.totalSteps}',
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
+
+                // 上传状态
+                if (locService.uploadStatus.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          locService.uploadStatus.contains('失败')
+                              ? Icons.cloud_off
+                              : Icons.cloud_done,
+                          size: 14,
+                          color: locService.uploadStatus.contains('失败')
+                              ? Colors.red
+                              : Colors.green,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          locService.uploadStatus,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: locService.uploadStatus.contains('失败')
+                                ? Colors.red
+                                : Colors.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
 
                 // 控制按钮
                 if (locService.state != RecordingState.idle)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // 暂停/继续
                       _buildControlButton(
                         icon: locService.state == RecordingState.recording
                             ? Icons.pause
@@ -240,7 +312,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         onPressed: locService.togglePause,
                       ),
                       const SizedBox(width: 32),
-                      // 结束
                       _buildControlButton(
                         icon: Icons.stop,
                         color: Colors.red,
@@ -255,7 +326,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     ],
                   ),
 
-                // 上传中
                 if (_isUploading)
                   const Padding(
                     padding: EdgeInsets.only(top: 8),
@@ -269,10 +339,11 @@ class _TrackingScreenState extends State<TrackingScreen> {
     );
   }
 
-  Widget _buildMetric(BuildContext context,
-      {required IconData icon,
-      required String label,
-      required String value}) {
+  Widget _buildMetric({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
     return Column(
       children: [
         Icon(icon, size: 20, color: Colors.grey[600]),
@@ -285,10 +356,11 @@ class _TrackingScreenState extends State<TrackingScreen> {
     );
   }
 
-  Widget _buildControlButton(
-      {required IconData icon,
-      required Color color,
-      required VoidCallback onPressed}) {
+  Widget _buildControlButton({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
     return GestureDetector(
       onTap: onPressed,
       child: Container(

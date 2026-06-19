@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Layout,
-  Menu,
   List,
   Typography,
   message,
@@ -9,11 +8,20 @@ import {
   Empty,
   Button,
   Popconfirm,
+  Tag,
+  Statistic,
+  Card,
+  Row,
+  Col,
 } from 'antd';
 import {
   HistoryOutlined,
   DeleteOutlined,
   ReloadOutlined,
+  EnvironmentOutlined,
+  ClockCircleOutlined,
+  FieldNumberOutlined,
+  DashboardOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
@@ -27,6 +35,7 @@ interface Session {
   start_time: string;
   end_time: string;
   point_count: number;
+  total_steps: number;
 }
 
 interface TrackPoint {
@@ -36,7 +45,18 @@ interface TrackPoint {
   longitude: number;
   altitude: number | null;
   speed: number | null;
+  steps: number | null;
   timestamp: string;
+}
+
+interface SessionStats {
+  session_id: string;
+  point_count: number;
+  total_steps: number;
+  start_time: string;
+  last_latitude: number;
+  last_longitude: number;
+  last_timestamp: string;
 }
 
 function App() {
@@ -45,6 +65,8 @@ function App() {
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [trackPoints, setTrackPoints] = useState<TrackPoint[]>([]);
   const [pointsLoading, setPointsLoading] = useState(false);
+  const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchSessions = useCallback(async () => {
     setLoading(true);
@@ -62,11 +84,24 @@ function App() {
     fetchSessions();
   }, [fetchSessions]);
 
+  // 清理轮询
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, []);
+
   const fetchTrackPoints = async (sessionId: string) => {
     setPointsLoading(true);
     try {
-      const res = await axios.get(`/api/sessions/${sessionId}/track-points`);
-      setTrackPoints(res.data.points || []);
+      const [pointsRes, statsRes] = await Promise.all([
+        axios.get(`/api/sessions/${sessionId}/track-points`),
+        axios.get(`/api/sessions/${sessionId}/stats`),
+      ]);
+      setTrackPoints(pointsRes.data.points || []);
+      if (statsRes.data.found) {
+        setSessionStats(statsRes.data.stats);
+      }
     } catch {
       message.error('获取轨迹点失败');
     } finally {
@@ -74,9 +109,29 @@ function App() {
     }
   };
 
+  // 启动实时轮询
+  const startPolling = (sessionId: string) => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingRef.current = setInterval(async () => {
+      try {
+        const [pointsRes, statsRes] = await Promise.all([
+          axios.get(`/api/sessions/${sessionId}/track-points`),
+          axios.get(`/api/sessions/${sessionId}/stats`),
+        ]);
+        setTrackPoints(pointsRes.data.points || []);
+        if (statsRes.data.found) {
+          setSessionStats(statsRes.data.stats);
+        }
+      } catch {
+        // 静默失败，继续轮询
+      }
+    }, 3000); // 每 3 秒刷新
+  };
+
   const handleSelectSession = (session: Session) => {
     setSelectedSession(session);
     fetchTrackPoints(session.session_id);
+    startPolling(session.session_id);
   };
 
   const handleDelete = async (sessionId: string) => {
@@ -86,6 +141,11 @@ function App() {
       if (selectedSession?.session_id === sessionId) {
         setSelectedSession(null);
         setTrackPoints([]);
+        setSessionStats(null);
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
       }
       fetchSessions();
     } catch {
@@ -136,10 +196,7 @@ function App() {
             <Spin />
           </div>
         ) : sessions.length === 0 ? (
-          <Empty
-            description="暂无运动记录"
-            style={{ marginTop: 80 }}
-          />
+          <Empty description="暂无运动记录" style={{ marginTop: 80 }} />
         ) : (
           <List
             dataSource={sessions}
@@ -153,7 +210,9 @@ function App() {
                     padding: '12px 16px',
                     cursor: 'pointer',
                     background: isSelected ? '#e6f4ff' : '#fff',
-                    borderLeft: isSelected ? '3px solid #1677ff' : '3px solid transparent',
+                    borderLeft: isSelected
+                      ? '3px solid #1677ff'
+                      : '3px solid transparent',
                     transition: 'background 0.2s',
                   }}
                   actions={[
@@ -185,7 +244,10 @@ function App() {
                     description={
                       <div>
                         <Text type="secondary" style={{ fontSize: 12 }}>
-                          轨迹点数: {session.point_count}
+                          轨迹: {session.point_count} 点
+                        </Text>
+                        <Text type="secondary" style={{ fontSize: 12, marginLeft: 12 }}>
+                          步数: {session.total_steps ?? 0}
                         </Text>
                         <br />
                         <Text type="secondary" style={{ fontSize: 12 }}>
@@ -202,29 +264,64 @@ function App() {
         )}
       </Sider>
 
-      {/* 右侧地图 */}
+      {/* 右侧地图 + 统计 */}
       <Content style={{ background: '#f5f5f5' }}>
         {selectedSession ? (
           <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            {/* 统计面板 */}
             <div
               style={{
                 padding: '12px 24px',
                 background: '#fff',
                 borderBottom: '1px solid #f0f0f0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
               }}
             >
-              <Text strong>
-                会话: {selectedSession.session_id.substring(0, 8)}...
-                &nbsp;&nbsp;|&nbsp;&nbsp;
-                {formatTime(selectedSession.start_time)}
-              </Text>
-              <Text type="secondary">
-                共 {trackPoints.length} 个轨迹点
-              </Text>
+              <Row gutter={16}>
+                <Col span={6}>
+                  <Statistic
+                    title="轨迹点数"
+                    value={sessionStats?.point_count ?? trackPoints.length}
+                    prefix={<EnvironmentOutlined />}
+                    valueStyle={{ fontSize: 18 }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="总步数"
+                    value={sessionStats?.total_steps ?? 0}
+                    prefix={<FieldNumberOutlined />}
+                    valueStyle={{ fontSize: 18 }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="开始时间"
+                    value={sessionStats?.start_time ? formatTime(sessionStats.start_time) : formatTime(selectedSession.start_time)}
+                    prefix={<ClockCircleOutlined />}
+                    valueStyle={{ fontSize: 14 }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="最后更新"
+                    value={
+                      sessionStats?.last_timestamp
+                        ? formatTime(sessionStats.last_timestamp)
+                        : '--'
+                    }
+                    prefix={<DashboardOutlined />}
+                    valueStyle={{ fontSize: 14 }}
+                  />
+                  {pollingRef.current && (
+                    <Tag color="processing" style={{ marginTop: 4 }}>
+                      实时监控中
+                    </Tag>
+                  )}
+                </Col>
+              </Row>
             </div>
+
+            {/* 地图 */}
             <div style={{ flex: 1, position: 'relative' }}>
               {pointsLoading ? (
                 <div
@@ -238,7 +335,13 @@ function App() {
                   <Spin tip="加载轨迹中..." />
                 </div>
               ) : (
-                <TrackMap points={trackPoints} />
+                <TrackMap
+                  points={trackPoints}
+                  showLiveStats={
+                    !!pollingRef.current && sessionStats != null
+                  }
+                  sessionStats={sessionStats}
+                />
               )}
             </div>
           </div>

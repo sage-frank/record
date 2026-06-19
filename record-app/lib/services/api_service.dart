@@ -50,4 +50,17 @@ class ApiService {
       throw Exception('获取轨迹点失败: ${response.statusCode}');
     }
   }
+
+  /// 获取会话实时统计
+  Future<Map<String, dynamic>> getSessionStats(String sessionId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/sessions/$sessionId/stats'),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('获取统计失败: ${response.statusCode}');
+    }
+  }
 }

@@ -86,6 +86,30 @@ pub async fn get_session_track_points(
     })))
 }
 
+/// GET /api/sessions/:id/stats - 实时统计
+pub async fn get_session_stats(
+    State(db): State<AppState>,
+    Path(session_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let stats = db
+        .get_session_stats(&session_id)
+        .map_err(|e| {
+            eprintln!("get stats error: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    match stats {
+        Some(s) => Ok(Json(serde_json::json!({
+            "found": true,
+            "stats": s,
+        }))),
+        None => Ok(Json(serde_json::json!({
+            "found": false,
+            "message": "session not found",
+        }))),
+    }
+}
+
 /// DELETE /api/sessions/:id
 pub async fn delete_session(
     State(db): State<AppState>,

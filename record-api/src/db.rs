@@ -1,7 +1,7 @@
 use rusqlite::{Connection, Result};
 use std::sync::Mutex;
 
-use crate::models::{SessionSummary, TrackPoint, TrackPointInput};
+use crate::models::{SessionStats, SessionSummary, TrackPoint, TrackPointInput};
 
 pub struct Database {
     conn: Mutex<Connection>,
@@ -14,6 +14,7 @@ impl Database {
             conn: Mutex::new(conn),
         };
         db.init_tables()?;
+        db.migrate_add_steps()?;
         Ok(db)
     }
 
@@ -27,6 +28,7 @@ impl Database {
                 longitude   REAL NOT NULL,
                 altitude    REAL,
                 speed       REAL,
+                steps       INTEGER DEFAULT 0,
                 timestamp   TEXT NOT NULL,
                 created_at  TEXT NOT NULL DEFAULT (datetime('now'))
             );
@@ -38,18 +40,33 @@ impl Database {
         Ok(())
     }
 
+    /// 兼容旧数据库：添加 steps 列
+    fn migrate_add_steps(&self) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let has_column: bool = conn
+            .prepare("SELECT steps FROM track_points LIMIT 0")
+            .is_ok();
+        if !has_column {
+            conn.execute_batch(
+                "ALTER TABLE track_points ADD COLUMN steps INTEGER DEFAULT 0;",
+            )?;
+        }
+        Ok(())
+    }
+
     /// 插入单个轨迹点
     pub fn insert_track_point(&self, session_id: &str, input: &TrackPointInput) -> Result<TrackPoint> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO track_points (session_id, latitude, longitude, altitude, speed, timestamp)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO track_points (session_id, latitude, longitude, altitude, speed, steps, timestamp)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![
                 session_id,
                 input.latitude,
                 input.longitude,
                 input.altitude,
                 input.speed,
+                input.steps,
                 input.timestamp,
             ],
         )?;
@@ -61,6 +78,7 @@ impl Database {
             longitude: input.longitude,
             altitude: input.altitude,
             speed: input.speed,
+            steps: input.steps,
             timestamp: input.timestamp.clone(),
             created_at: None,
         })
@@ -77,14 +95,15 @@ impl Database {
 
         for point in points {
             conn.execute(
-                "INSERT INTO track_points (session_id, latitude, longitude, altitude, speed, timestamp)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO track_points (session_id, latitude, longitude, altitude, speed, steps, timestamp)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 rusqlite::params![
                     session_id,
                     point.latitude,
                     point.longitude,
                     point.altitude,
                     point.speed,
+                    point.steps,
                     point.timestamp,
                 ],
             )?;
@@ -96,6 +115,7 @@ impl Database {
                 longitude: point.longitude,
                 altitude: point.altitude,
                 speed: point.speed,
+                steps: point.steps,
                 timestamp: point.timestamp.clone(),
                 created_at: None,
             });
@@ -108,7 +128,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT session_id, MIN(timestamp) as start_time, MAX(timestamp) as end_time, 
-                    COUNT(*) as point_count
+                    COUNT(*) as point_count, COALESCE(SUM(steps), 0) as total_steps
              FROM track_points 
              GROUP BY session_id 
              ORDER BY start_time DESC",
@@ -121,6 +141,7 @@ impl Database {
                     start_time: row.get(1)?,
                     end_time: row.get(2)?,
                     point_count: row.get(3)?,
+                    total_steps: Some(row.get(4)?),
                     total_distance_km: None,
                 })
             })?
@@ -133,7 +154,7 @@ impl Database {
     pub fn get_session_track_points(&self, session_id: &str) -> Result<Vec<TrackPoint>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, session_id, latitude, longitude, altitude, speed, timestamp, created_at
+            "SELECT id, session_id, latitude, longitude, altitude, speed, steps, timestamp, created_at
              FROM track_points 
              WHERE session_id = ?1 
              ORDER BY timestamp ASC",
@@ -148,8 +169,9 @@ impl Database {
                     longitude: row.get(3)?,
                     altitude: row.get(4)?,
                     speed: row.get(5)?,
-                    timestamp: row.get(6)?,
-                    created_at: Some(row.get(7)?),
+                    steps: row.get(6)?,
+                    timestamp: row.get(7)?,
+                    created_at: Some(row.get(8)?),
                 })
             })?
             .filter_map(|r| r.ok())
@@ -165,5 +187,33 @@ impl Database {
             [session_id],
         )?;
         Ok(deleted)
+    }
+
+    /// 获取会话实时统计
+    pub fn get_session_stats(&self, session_id: &str) -> Result<Option<SessionStats>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT session_id, COUNT(*), COALESCE(SUM(steps), 0), 
+                    MIN(timestamp), latitude, longitude, MAX(timestamp)
+             FROM track_points 
+             WHERE session_id = ?1",
+        )?;
+
+        let mut rows = stmt.query_map([session_id], |row| {
+            Ok(SessionStats {
+                session_id: row.get(0)?,
+                point_count: row.get(1)?,
+                total_steps: row.get(2)?,
+                start_time: row.get(3)?,
+                last_latitude: row.get(4)?,
+                last_longitude: row.get(5)?,
+                last_timestamp: row.get(6)?,
+            })
+        })?;
+
+        match rows.next() {
+            Some(r) => Ok(Some(r?)),
+            None => Ok(None),
+        }
     }
 }

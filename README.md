@@ -42,6 +42,7 @@ track_points (
   longitude   REAL NOT NULL,
   altitude    REAL,
   speed       REAL,
+  steps       INTEGER DEFAULT 0,
   timestamp   TEXT NOT NULL,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 )
@@ -55,6 +56,7 @@ track_points (
 | POST | `/api/track-points/batch` | 批量上报位置点 |
 | GET | `/api/sessions` | 获取所有运动会话列表 |
 | GET | `/api/sessions/:id/track-points` | 获取某次会话的轨迹点 |
+| GET | `/api/sessions/:id/stats` | 获取会话实时统计 |
 | DELETE | `/api/sessions/:id` | 删除一次运动记录 |
 
 ## 快速开始
