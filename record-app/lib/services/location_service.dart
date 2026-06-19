@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:pedometer/pedometer.dart';
 import 'package:uuid/uuid.dart';
 import 'api_service.dart';
 
@@ -49,6 +50,10 @@ class LocationService extends ChangeNotifier {
   Duration _elapsed = Duration.zero;
   bool _hasPermission = false;
   bool _permissionChecked = false;
+
+  // Pedometer 相关
+  StreamSubscription<StepCount>? _stepCountSubscription;
+  int _stepCountAtStart = 0; // 开始记录时的系统步数基准
 
   // 上传状态
   String _uploadStatus = '';
@@ -118,13 +123,17 @@ class LocationService extends ChangeNotifier {
     _currentTrack.clear();
     _totalDistance = 0;
     _totalSteps = 0;
+    _stepCountAtStart = 0;
     _startTime = DateTime.now();
     _elapsed = Duration.zero;
     _state = RecordingState.recording;
     _uploadStatus = '';
     notifyListeners();
 
-    // 每 3 秒采集一次位置 + 模拟步数
+    // 启动计步器监听（真实步数）
+    _startPedometer();
+
+    // 每 3 秒采集一次位置
     _locationTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       await _collectPoint();
     });
@@ -137,21 +146,43 @@ class LocationService extends ChangeNotifier {
     return 'ok';
   }
 
+  /// 启动计步器，监听系统步数变化
+  void _startPedometer() {
+    _stepCountSubscription?.cancel();
+    _stepCountSubscription = Pedometer.stepCountStream.listen(
+      (StepCount event) {
+        if (_stepCountAtStart == 0) {
+          // 首次获取系统步数作为基准
+          _stepCountAtStart = event.steps;
+        }
+        // 实时步数 = 当前系统步数 - 基准步数
+        _totalSteps = (event.steps - _stepCountAtStart).clamp(0, 999999);
+        notifyListeners();
+      },
+      onError: (error) {
+        debugPrint('计步器错误: $error');
+      },
+    );
+  }
+
+  /// 停止计步器监听
+  void _stopPedometer() {
+    _stepCountSubscription?.cancel();
+    _stepCountSubscription = null;
+  }
+
   Future<void> _collectPoint() async {
     try {
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // Demo 模式：模拟步数，每秒约 2-3 步
-      _totalSteps += (2 + (math.Random().nextInt(2))); // 每次采集加 2-3 步
-
       final point = TrackPoint(
         latitude: position.latitude,
         longitude: position.longitude,
         altitude: position.altitude,
         speed: position.speed,
-        steps: _totalSteps,
+        steps: _totalSteps, // 使用 pedometer 真实步数
         timestamp: DateTime.now(),
       );
 
@@ -196,9 +227,11 @@ class LocationService extends ChangeNotifier {
     if (_state == RecordingState.recording) {
       _locationTimer?.cancel();
       _uploadTimer?.cancel();
+      _stopPedometer();
       _state = RecordingState.paused;
     } else if (_state == RecordingState.paused) {
       _state = RecordingState.recording;
+      _startPedometer();
       _locationTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
         await _collectPoint();
       });
@@ -213,6 +246,7 @@ class LocationService extends ChangeNotifier {
   Future<bool> stopAndUpload(ApiService api) async {
     _locationTimer?.cancel();
     _uploadTimer?.cancel();
+    _stopPedometer();
     _state = RecordingState.idle;
 
     if (_currentTrack.isEmpty || _sessionId == null) {
@@ -249,6 +283,7 @@ class LocationService extends ChangeNotifier {
   void dispose() {
     _locationTimer?.cancel();
     _uploadTimer?.cancel();
+    _stepCountSubscription?.cancel();
     super.dispose();
   }
 }
