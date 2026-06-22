@@ -2,7 +2,7 @@ mod db;
 mod handlers;
 mod models;
 
-use axum::{routing::get, Router};
+use axum::{routing::{get, delete}, Router};
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -33,18 +33,19 @@ async fn main() {
         .allow_headers(Any);
 
     // 路由配置
+    let sessions_routes = Router::new()
+        .route("/", get(get_sessions))
+        .route("/{id}", delete(delete_session))
+        .route("/{id}/track-points", get(get_session_track_points))
+        .route("/{id}/stats", get(get_session_stats));
+
     let app = Router::new()
         .route("/api/track-points", axum::routing::post(add_track_point))
         .route("/api/track-points/batch", axum::routing::post(add_track_points_batch))
-        .route("/api/sessions", get(get_sessions))
-        .route("/api/sessions/{id}/track-points", get(get_session_track_points))
-        .route("/api/sessions/{id}/stats", get(get_session_stats))
-        .route("/api/sessions/{id}", axum::routing::delete(delete_session))
+        .nest("/api/sessions", sessions_routes)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
-    
-    println!("{:#?}", app.routes());
 
     let addr = "0.0.0.0:3001";
     info!("Server running at http://{addr}");
