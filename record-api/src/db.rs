@@ -47,15 +47,17 @@ impl Database {
             .prepare("SELECT steps FROM track_points LIMIT 0")
             .is_ok();
         if !has_column {
-            conn.execute_batch(
-                "ALTER TABLE track_points ADD COLUMN steps INTEGER DEFAULT 0;",
-            )?;
+            conn.execute_batch("ALTER TABLE track_points ADD COLUMN steps INTEGER DEFAULT 0;")?;
         }
         Ok(())
     }
 
     /// 插入单个轨迹点
-    pub fn insert_track_point(&self, session_id: &str, input: &TrackPointInput) -> Result<TrackPoint> {
+    pub fn insert_track_point(
+        &self,
+        session_id: &str,
+        input: &TrackPointInput,
+    ) -> Result<TrackPoint> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO track_points (session_id, latitude, longitude, altitude, speed, steps, timestamp)
@@ -128,7 +130,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT session_id, MIN(timestamp) as start_time, MAX(timestamp) as end_time, 
-                    COUNT(*) as point_count, COALESCE(SUM(steps), 0) as total_steps
+                    COUNT(*) as point_count, COALESCE(MAX(steps), 0) as total_steps
              FROM track_points 
              GROUP BY session_id 
              ORDER BY start_time DESC",
@@ -193,7 +195,7 @@ impl Database {
     pub fn get_session_stats(&self, session_id: &str) -> Result<Option<SessionStats>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT session_id, COUNT(*), COALESCE(SUM(steps), 0), 
+            "SELECT session_id, COUNT(*), COALESCE(MAX(steps), 0), 
                     MIN(timestamp), latitude, longitude, MAX(timestamp)
              FROM track_points 
              WHERE session_id = ?1",

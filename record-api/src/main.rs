@@ -2,7 +2,10 @@ mod db;
 mod handlers;
 mod models;
 
-use axum::{routing::{get, delete}, Router};
+use axum::{
+    routing::{delete, get},
+    Router,
+};
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -42,7 +45,10 @@ async fn main() {
 
     let app = Router::new()
         .route("/api/track-points", axum::routing::post(add_track_point))
-        .route("/api/track-points/batch", axum::routing::post(add_track_points_batch))
+        .route(
+            "/api/track-points/batch",
+            axum::routing::post(add_track_points_batch),
+        )
         .nest("/api/sessions", sessions_routes)
         .layer(cors)
         .layer(TraceLayer::new_for_http())

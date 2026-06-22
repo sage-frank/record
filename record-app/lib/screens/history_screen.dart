@@ -105,7 +105,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget _buildSessionCard(Map<String, dynamic> session) {
     final sessionId = session['session_id'] as String;
     final startTime = session['start_time'] as String;
-    final endTime = session['end_time'] as String;
     final pointCount = session['point_count'] as int;
 
     return Card(

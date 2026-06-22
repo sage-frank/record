@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:pedometer/pedometer.dart';
 import 'package:uuid/uuid.dart';
+import '../models/run_result.dart';
 import '../utils/coord_transform.dart';
 import 'api_service.dart';
 
@@ -25,13 +26,13 @@ class TrackPoint {
   });
 
   Map<String, dynamic> toJson() => {
-        'latitude': latitude,
-        'longitude': longitude,
-        if (altitude != null) 'altitude': altitude,
-        if (speed != null) 'speed': speed,
-        'steps': steps,
-        'timestamp': timestamp.toIso8601String(),
-      };
+    'latitude': latitude,
+    'longitude': longitude,
+    if (altitude != null) 'altitude': altitude,
+    if (speed != null) 'speed': speed,
+    'steps': steps,
+    'timestamp': timestamp.toIso8601String(),
+  };
 }
 
 enum RecordingState { idle, recording, paused }
@@ -42,13 +43,17 @@ class LocationService extends ChangeNotifier {
   RecordingState _state = RecordingState.idle;
   String? _sessionId;
   final List<TrackPoint> _currentTrack = [];
-  Timer? _locationTimer;
+  StreamSubscription<Position>? _positionSubscription;
   Timer? _uploadTimer;
+  ApiService? _apiService;
+  int _lastUploadedIndex = 0;
 
   double _totalDistance = 0;
   int _totalSteps = 0;
   DateTime? _startTime;
   Duration _elapsed = Duration.zero;
+  DateTime? _pausedAt;
+  Duration _totalPausedDuration = Duration.zero;
   bool _hasPermission = false;
   bool _permissionChecked = false;
 
@@ -82,7 +87,8 @@ class LocationService extends ChangeNotifier {
     const r = 6371.0;
     final dLat = (lat2 - lat1) * math.pi / 180;
     final dLon = (lon2 - lon1) * math.pi / 180;
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
         math.cos(lat1 * math.pi / 180) *
             math.cos(lat2 * math.pi / 180) *
             math.sin(dLon / 2) *
@@ -129,20 +135,30 @@ class LocationService extends ChangeNotifier {
     debugPrint('[LocationService] checkPermission 结果: $permResult');
     if (permResult != 'ok') return permResult;
 
+    await _positionSubscription?.cancel();
+    _uploadTimer?.cancel();
+    _stopPedometer();
+
+    _apiService = api;
     _sessionId = _uuid.v4();
     _currentTrack.clear();
     _totalDistance = 0;
     _totalSteps = 0;
     _stepCountAtStart = 0;
+    _lastUploadedIndex = 0;
     _startTime = DateTime.now();
     _elapsed = Duration.zero;
+    _pausedAt = null;
+    _totalPausedDuration = Duration.zero;
     _state = RecordingState.recording;
     _uploadStatus = '';
     _lastGpsError = '';
     _lastPedometerError = '';
     notifyListeners();
 
-    debugPrint('[LocationService] 开始记录 session=$_sessionId startTime=$_startTime');
+    debugPrint(
+      '[LocationService] 开始记录 session=$_sessionId startTime=$_startTime',
+    );
 
     // 启动计步器监听（真实步数）
     try {
@@ -153,20 +169,110 @@ class LocationService extends ChangeNotifier {
       notifyListeners();
     }
 
-    // 立即采集一次位置
-    await _collectPoint();
-
-    // 每 3 秒采集一次位置
-    _locationTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-      await _collectPoint();
-    });
-
-    // 每 5 秒上传一次到服务器
-    _uploadTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-      await _uploadToServer(api);
-    });
+    await _startPositionTracking();
+    _startUploadTimer();
 
     return 'ok';
+  }
+
+  LocationSettings _buildLocationSettings() {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10,
+        intervalDuration: Duration(seconds: 10),
+        foregroundNotificationConfig: ForegroundNotificationConfig(
+          notificationTitle: '运动记录进行中',
+          notificationText: '正在后台记录你的跑步轨迹',
+          enableWakeLock: true,
+        ),
+      );
+    }
+
+    if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      return AppleSettings(
+        accuracy: LocationAccuracy.high,
+        activityType: ActivityType.fitness,
+        distanceFilter: 10,
+        pauseLocationUpdatesAutomatically: true,
+        showBackgroundLocationIndicator: false,
+      );
+    }
+
+    return const LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10,
+    );
+  }
+
+  Future<void> _startPositionTracking() async {
+    await _positionSubscription?.cancel();
+    _positionSubscription = Geolocator.getPositionStream(
+      locationSettings: _buildLocationSettings(),
+    ).listen(
+      _handlePosition,
+      onError: (Object error) {
+        final errStr = error.toString();
+        debugPrint('定位失败: $errStr');
+        _lastGpsError = 'GPS: $errStr';
+        _syncElapsed();
+        notifyListeners();
+      },
+    );
+  }
+
+  void _handlePosition(Position position) {
+    if (_state != RecordingState.recording) {
+      return;
+    }
+
+    if (_lastGpsError.isNotEmpty) {
+      _lastGpsError = '';
+    }
+
+    final gcj = wgs84ToGcj02(position.latitude, position.longitude);
+    final point = TrackPoint(
+      latitude: gcj.latitude,
+      longitude: gcj.longitude,
+      altitude: position.altitude,
+      speed: position.speed,
+      steps: _totalSteps,
+      timestamp: DateTime.now(),
+    );
+
+    if (_currentTrack.isNotEmpty) {
+      final last = _currentTrack.last;
+      _totalDistance += _haversineKm(
+        last.latitude,
+        last.longitude,
+        point.latitude,
+        point.longitude,
+      );
+    }
+
+    _currentTrack.add(point);
+    _syncElapsed();
+    notifyListeners();
+  }
+
+  void _startUploadTimer() {
+    _uploadTimer?.cancel();
+    _uploadTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
+      await _uploadPendingPoints();
+    });
+  }
+
+  void _syncElapsed([DateTime? now]) {
+    if (_startTime == null) {
+      return;
+    }
+
+    final currentTime = now ?? DateTime.now();
+    _elapsed = currentTime.difference(_startTime!) - _totalPausedDuration;
+    if (_elapsed.isNegative) {
+      _elapsed = Duration.zero;
+    }
   }
 
   /// 启动计步器，监听系统步数变化
@@ -197,71 +303,34 @@ class LocationService extends ChangeNotifier {
     _stepCountSubscription = null;
   }
 
-  Future<void> _collectPoint() async {
-    try {
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-
-      // GPS 获取成功，清除错误
-      if (_lastGpsError.isNotEmpty) {
-        _lastGpsError = '';
-      }
-
-      // WGS-84 → GCJ-02 转换（高德地图使用火星坐标系）
-      final gcj = wgs84ToGcj02(position.latitude, position.longitude);
-
-      final point = TrackPoint(
-        latitude: gcj.latitude,
-        longitude: gcj.longitude,
-        altitude: position.altitude,
-        speed: position.speed,
-        steps: _totalSteps, // 使用 pedometer 真实步数
-        timestamp: DateTime.now(),
-      );
-
-      if (_currentTrack.isNotEmpty) {
-        final last = _currentTrack.last;
-        _totalDistance += _haversineKm(
-          last.latitude, last.longitude,
-          point.latitude, point.longitude,
-        );
-      }
-
-      _currentTrack.add(point);
-      _elapsed = DateTime.now().difference(_startTime!);
-      notifyListeners();
-    } catch (e) {
-      final errStr = e.toString();
-      debugPrint('定位失败: $errStr');
-      _lastGpsError = 'GPS: $errStr';
-      // 即使定位失败也更新用时
-      if (_startTime != null) {
-        _elapsed = DateTime.now().difference(_startTime!);
-        notifyListeners();
-      }
-    }
-  }
-
-  Future<void> _uploadToServer(ApiService api) async {
-    if (_currentTrack.isEmpty || _sessionId == null) {
-      debugPrint('[LocationService] 跳过上传: track空=${_currentTrack.isEmpty} session=$_sessionId');
+  Future<void> _uploadPendingPoints() async {
+    final api = _apiService;
+    final sessionId = _sessionId;
+    if (api == null || sessionId == null || _currentTrack.isEmpty) {
       return;
     }
+
+    final startIndex = _lastUploadedIndex;
+    if (startIndex >= _currentTrack.length) {
+      return;
+    }
+
+    final pendingPoints = _currentTrack.sublist(startIndex);
+
     try {
-      final lastPoints = _currentTrack.length > 2
-          ? _currentTrack.sublist(_currentTrack.length - 2)
-          : _currentTrack;
-      debugPrint('[LocationService] 定时上传: session=$_sessionId 点数=${lastPoints.length}');
-      await api.uploadTrackPoints(
-        sessionId: _sessionId!,
-        points: lastPoints.map((p) => p.toJson()).toList(),
+      debugPrint(
+        '[LocationService] 增量上传: session=$sessionId start=$startIndex count=${pendingPoints.length}',
       );
-      _uploadStatus = '已同步 ${_currentTrack.length} 个点';
+      await api.uploadTrackPoints(
+        sessionId: sessionId,
+        points: pendingPoints.map((p) => p.toJson()).toList(),
+      );
+      _lastUploadedIndex = startIndex + pendingPoints.length;
+      _uploadStatus = '已同步 $_lastUploadedIndex 个点';
       notifyListeners();
     } catch (e) {
       _uploadStatus = '同步失败: $e';
-      debugPrint('[LocationService] 定时上传失败: $e');
+      debugPrint('[LocationService] 增量上传失败: $e');
       notifyListeners();
     }
   }
@@ -269,45 +338,62 @@ class LocationService extends ChangeNotifier {
   /// 暂停/恢复
   void togglePause() {
     if (_state == RecordingState.recording) {
-      _locationTimer?.cancel();
+      _pausedAt = DateTime.now();
+      _syncElapsed(_pausedAt);
+      _positionSubscription?.cancel();
+      _positionSubscription = null;
       _uploadTimer?.cancel();
       _stopPedometer();
       _state = RecordingState.paused;
     } else if (_state == RecordingState.paused) {
+      if (_pausedAt != null) {
+        _totalPausedDuration += DateTime.now().difference(_pausedAt!);
+        _pausedAt = null;
+      }
       _state = RecordingState.recording;
       _startPedometer();
-      _locationTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-        await _collectPoint();
-      });
-      _uploadTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-        // 需要通过某种方式获取 api，这里暂时跳过
-      });
+      unawaited(_startPositionTracking());
+      _startUploadTimer();
     }
     notifyListeners();
   }
 
   /// 停止并最终上传
-  Future<bool> stopAndUpload(ApiService api) async {
-    _locationTimer?.cancel();
+  Future<RunResult> stopAndUpload(ApiService api) async {
+    await _positionSubscription?.cancel();
+    _positionSubscription = null;
     _uploadTimer?.cancel();
     _stopPedometer();
+    if (_pausedAt != null) {
+      _totalPausedDuration += DateTime.now().difference(_pausedAt!);
+      _pausedAt = null;
+    }
+    _syncElapsed();
     _state = RecordingState.idle;
 
-    if (_currentTrack.isEmpty || _sessionId == null) {
+    if (_currentTrack.isEmpty || _sessionId == null || _startTime == null) {
       debugPrint('[LocationService] 停止上传: 无数据');
       notifyListeners();
       throw Exception('没有轨迹数据可上传');
     }
 
-    debugPrint('[LocationService] 停止上传: session=$_sessionId 总点数=${_currentTrack.length}');
+    _apiService = api;
+    debugPrint(
+      '[LocationService] 停止上传: session=$_sessionId 总点数=${_currentTrack.length}',
+    );
     try {
-      await api.uploadTrackPoints(
-        sessionId: _sessionId!,
-        points: _currentTrack.map((p) => p.toJson()).toList(),
-      );
+      await _uploadPendingPoints();
       _uploadStatus = '全部上传完成';
+      final result = RunResult(
+        sessionId: _sessionId!,
+        startTime: _startTime!,
+        endTime: DateTime.now(),
+        totalDistanceKm: _totalDistance,
+        totalSteps: _totalSteps,
+        pointCount: _currentTrack.length,
+      );
       notifyListeners();
-      return true;
+      return result;
     } catch (e) {
       _uploadStatus = '上传失败';
       debugPrint('[LocationService] 停止上传失败: $e');
@@ -327,7 +413,7 @@ class LocationService extends ChangeNotifier {
 
   @override
   void dispose() {
-    _locationTimer?.cancel();
+    _positionSubscription?.cancel();
     _uploadTimer?.cancel();
     _stepCountSubscription?.cancel();
     super.dispose();

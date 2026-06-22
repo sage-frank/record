@@ -17,14 +17,14 @@ pub async fn add_track_point(
     Json(input): Json<TrackPointInput>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let session_id = Uuid::new_v4().to_string();
-    info!("POST /api/track-points lat={} lng={} speed={:?} steps={:?}", 
-        input.latitude, input.longitude, input.speed, input.steps);
-    let point = db
-        .insert_track_point(&session_id, &input)
-        .map_err(|e| {
-            error!("insert error: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    info!(
+        "POST /api/track-points lat={} lng={} speed={:?} steps={:?}",
+        input.latitude, input.longitude, input.speed, input.steps
+    );
+    let point = db.insert_track_point(&session_id, &input).map_err(|e| {
+        error!("insert error: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(serde_json::json!({
         "session_id": point.session_id,
@@ -42,7 +42,10 @@ pub async fn add_track_points_batch(
     } else {
         batch.session_id.clone()
     };
-    info!("POST /api/track-points/batch session={session_id} point_count={}", batch.points.len());
+    info!(
+        "POST /api/track-points/batch session={session_id} point_count={}",
+        batch.points.len()
+    );
 
     let points = db
         .insert_track_points_batch(&session_id, &batch.points)
@@ -51,7 +54,10 @@ pub async fn add_track_points_batch(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    info!("batch insert OK session={session_id} inserted={}", points.len());
+    info!(
+        "batch insert OK session={session_id} inserted={}",
+        points.len()
+    );
     Ok(Json(serde_json::json!({
         "session_id": session_id,
         "point_count": points.len(),
@@ -79,12 +85,10 @@ pub async fn get_session_track_points(
     Path(session_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     info!("GET /api/sessions/{session_id}/track-points");
-    let points = db
-        .get_session_track_points(&session_id)
-        .map_err(|e| {
-            error!("get points error: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let points = db.get_session_track_points(&session_id).map_err(|e| {
+        error!("get points error: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(serde_json::json!({
         "session_id": session_id,
@@ -98,12 +102,10 @@ pub async fn get_session_stats(
     State(db): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let stats = db
-        .get_session_stats(&session_id)
-        .map_err(|e| {
-            error!("get stats error: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let stats = db.get_session_stats(&session_id).map_err(|e| {
+        error!("get stats error: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     match stats {
         Some(s) => Ok(Json(serde_json::json!({
