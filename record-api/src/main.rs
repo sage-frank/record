@@ -44,7 +44,7 @@ async fn main() {
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    let addr = "0.0.0.0:3000";
+    let addr = "0.0.0.0:3001";
     info!("Server running at http://{addr}");
     info!("API base: http://{addr}/api");
 
