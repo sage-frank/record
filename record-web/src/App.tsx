@@ -27,6 +27,12 @@ import axios from 'axios';
 import dayjs from 'dayjs';
 import TrackMap from './components/TrackMap';
 
+// API 基础地址：开发时直接请求后端，不走 Vite 代理
+const api = axios.create({
+  baseURL: 'http://39.105.113.213:3001',
+  timeout: 15000,
+});
+
 const { Sider, Content } = Layout;
 const { Text } = Typography;
 
@@ -71,7 +77,7 @@ function App() {
   const fetchSessions = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get('/api/sessions');
+      const res = await api.get('/api/sessions');
       setSessions(res.data.sessions || []);
     } catch {
       message.error('获取会话列表失败，请确认 API 服务已启动');
@@ -95,8 +101,8 @@ function App() {
     setPointsLoading(true);
     try {
       const [pointsRes, statsRes] = await Promise.all([
-        axios.get(`/api/sessions/${sessionId}/track-points`),
-        axios.get(`/api/sessions/${sessionId}/stats`),
+        api.get(`/api/sessions/${sessionId}/track-points`),
+        api.get(`/api/sessions/${sessionId}/stats`),
       ]);
       setTrackPoints(pointsRes.data.points || []);
       if (statsRes.data.found) {
@@ -115,8 +121,8 @@ function App() {
     pollingRef.current = setInterval(async () => {
       try {
         const [pointsRes, statsRes] = await Promise.all([
-          axios.get(`/api/sessions/${sessionId}/track-points`),
-          axios.get(`/api/sessions/${sessionId}/stats`),
+          api.get(`/api/sessions/${sessionId}/track-points`),
+          api.get(`/api/sessions/${sessionId}/stats`),
         ]);
         setTrackPoints(pointsRes.data.points || []);
         if (statsRes.data.found) {
@@ -136,7 +142,7 @@ function App() {
 
   const handleDelete = async (sessionId: string) => {
     try {
-      await axios.delete(`/api/sessions/${sessionId}`);
+      await api.delete(`/api/sessions/${sessionId}`);
       message.success('删除成功');
       if (selectedSession?.session_id === sessionId) {
         setSelectedSession(null);
