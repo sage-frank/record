@@ -32,12 +32,13 @@ async fn main() {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    // 路由配置
+    // 路由配置 - sessions 子路由需要 clone state（axum 不会自动传递）
     let sessions_routes = Router::new()
         .route("/", get(get_sessions))
         .route("/{id}", delete(delete_session))
         .route("/{id}/track-points", get(get_session_track_points))
-        .route("/{id}/stats", get(get_session_stats));
+        .route("/{id}/stats", get(get_session_stats))
+        .with_state(state.clone());
 
     let app = Router::new()
         .route("/api/track-points", axum::routing::post(add_track_point))
