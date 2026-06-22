@@ -205,10 +205,10 @@ class LocationService extends ChangeNotifier {
   Future<void> _uploadToServer(ApiService api) async {
     if (_currentTrack.isEmpty || _sessionId == null) return;
     try {
-      // 只上传未上传过的点（这里简化为上传全部最新点）
       final lastPoints = _currentTrack.length > 2
           ? _currentTrack.sublist(_currentTrack.length - 2)
           : _currentTrack;
+      debugPrint('[LocationService] 定时上传: session=$_sessionId 点数=${lastPoints.length}');
       await api.uploadTrackPoints(
         sessionId: _sessionId!,
         points: lastPoints.map((p) => p.toJson()).toList(),
@@ -217,7 +217,7 @@ class LocationService extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _uploadStatus = '同步失败';
-      debugPrint('上传失败: $e');
+      debugPrint('[LocationService] 定时上传失败: $e');
       notifyListeners();
     }
   }
@@ -250,10 +250,12 @@ class LocationService extends ChangeNotifier {
     _state = RecordingState.idle;
 
     if (_currentTrack.isEmpty || _sessionId == null) {
+      debugPrint('[LocationService] 停止上传: 无数据');
       notifyListeners();
       return false;
     }
 
+    debugPrint('[LocationService] 停止上传: session=$_sessionId 总点数=${_currentTrack.length}');
     try {
       await api.uploadTrackPoints(
         sessionId: _sessionId!,
@@ -264,7 +266,7 @@ class LocationService extends ChangeNotifier {
       return true;
     } catch (e) {
       _uploadStatus = '上传失败';
-      debugPrint('上传失败: $e');
+      debugPrint('[LocationService] 停止上传失败: $e');
       notifyListeners();
       return false;
     }

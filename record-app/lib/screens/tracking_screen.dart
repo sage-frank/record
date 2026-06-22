@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -140,11 +141,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         Navigator.pop(ctx);
                         setState(() => _isUploading = true);
                         try {
+                          debugPrint('[TrackingScreen] 点击 结束并上传');
                           final success =
                               await locService.stopAndUpload(apiService);
                           setState(() => _isUploading = false);
                           _showUploadResult(success);
                         } catch (e) {
+                          debugPrint('[TrackingScreen] 结束并上传 异常: $e');
                           setState(() => _isUploading = false);
                           _showUploadResult(false, e.toString());
                         }
@@ -166,11 +169,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   : () async {
                       setState(() => _isUploading = true);
                       try {
+                        debugPrint('[TrackingScreen] 点击上传按钮');
                         final success =
                             await locService.stopAndUpload(apiService);
                         setState(() => _isUploading = false);
                         _showUploadResult(success);
                       } catch (e) {
+                        debugPrint('[TrackingScreen] 上传按钮 异常: $e');
                         setState(() => _isUploading = false);
                         _showUploadResult(false, e.toString());
                       }
@@ -329,11 +334,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         onPressed: () async {
                           setState(() => _isUploading = true);
                           try {
+                            debugPrint('[TrackingScreen] 点击停止按钮');
                             final success =
                                 await locService.stopAndUpload(apiService);
                             setState(() => _isUploading = false);
                             _showUploadResult(success);
                           } catch (e) {
+                            debugPrint('[TrackingScreen] 停止按钮 异常: $e');
                             setState(() => _isUploading = false);
                             _showUploadResult(false, e.toString());
                           }

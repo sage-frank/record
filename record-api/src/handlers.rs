@@ -3,6 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::db::Database;
@@ -16,10 +17,12 @@ pub async fn add_track_point(
     Json(input): Json<TrackPointInput>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let session_id = Uuid::new_v4().to_string();
+    info!("POST /api/track-points lat={} lng={} speed={:?} steps={:?}", 
+        input.latitude, input.longitude, input.speed, input.steps);
     let point = db
         .insert_track_point(&session_id, &input)
         .map_err(|e| {
-            eprintln!("insert error: {e}");
+            error!("insert error: {e}");
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -37,16 +40,18 @@ pub async fn add_track_points_batch(
     let session_id = if batch.session_id.is_empty() {
         Uuid::new_v4().to_string()
     } else {
-        batch.session_id
+        batch.session_id.clone()
     };
+    info!("POST /api/track-points/batch session={session_id} point_count={}", batch.points.len());
 
     let points = db
         .insert_track_points_batch(&session_id, &batch.points)
         .map_err(|e| {
-            eprintln!("batch insert error: {e}");
+            error!("batch insert error: {e}");
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
+    info!("batch insert OK session={session_id} inserted={}", points.len());
     Ok(Json(serde_json::json!({
         "session_id": session_id,
         "point_count": points.len(),
@@ -58,10 +63,11 @@ pub async fn get_sessions(
     State(db): State<AppState>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let sessions = db.get_sessions().map_err(|e| {
-        eprintln!("get sessions error: {e}");
+        error!("get sessions error: {e}");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    info!("GET /api/sessions count={}", sessions.len());
     Ok(Json(serde_json::json!({
         "sessions": sessions,
     })))
@@ -72,10 +78,11 @@ pub async fn get_session_track_points(
     State(db): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
+    info!("GET /api/sessions/{session_id}/track-points");
     let points = db
         .get_session_track_points(&session_id)
         .map_err(|e| {
-            eprintln!("get points error: {e}");
+            error!("get points error: {e}");
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -94,7 +101,7 @@ pub async fn get_session_stats(
     let stats = db
         .get_session_stats(&session_id)
         .map_err(|e| {
-            eprintln!("get stats error: {e}");
+            error!("get stats error: {e}");
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -115,8 +122,9 @@ pub async fn delete_session(
     State(db): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
+    info!("DELETE /api/sessions/{session_id}");
     let deleted = db.delete_session(&session_id).map_err(|e| {
-        eprintln!("delete error: {e}");
+        error!("delete error: {e}");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
