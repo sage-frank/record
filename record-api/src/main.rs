@@ -43,6 +43,8 @@ async fn main() {
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
+    
+    println!("{:#?}", app.routes());
 
     let addr = "0.0.0.0:3001";
     info!("Server running at http://{addr}");
