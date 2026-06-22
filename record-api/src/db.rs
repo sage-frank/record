@@ -1,7 +1,6 @@
 use rusqlite::{Connection, Result};
 use std::sync::Mutex;
 
-use crate::coord_transform::wgs84_to_gcj02;
 use crate::models::{SessionStats, SessionSummary, TrackPoint, TrackPointInput};
 
 pub struct Database {
@@ -55,17 +54,16 @@ impl Database {
         Ok(())
     }
 
-    /// 插入单个轨迹点（入库前 WGS-84 → GCJ-02）
+    /// 插入单个轨迹点
     pub fn insert_track_point(&self, session_id: &str, input: &TrackPointInput) -> Result<TrackPoint> {
         let conn = self.conn.lock().unwrap();
-        let (gcj_lat, gcj_lng) = wgs84_to_gcj02(input.latitude, input.longitude);
         conn.execute(
             "INSERT INTO track_points (session_id, latitude, longitude, altitude, speed, steps, timestamp)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![
                 session_id,
-                gcj_lat,
-                gcj_lng,
+                input.latitude,
+                input.longitude,
                 input.altitude,
                 input.speed,
                 input.steps,
@@ -76,8 +74,8 @@ impl Database {
         Ok(TrackPoint {
             id: Some(id),
             session_id: session_id.to_string(),
-            latitude: gcj_lat,
-            longitude: gcj_lng,
+            latitude: input.latitude,
+            longitude: input.longitude,
             altitude: input.altitude,
             speed: input.speed,
             steps: input.steps,
@@ -86,7 +84,7 @@ impl Database {
         })
     }
 
-    /// 批量插入轨迹点（入库前 WGS-84 → GCJ-02）
+    /// 批量插入轨迹点
     pub fn insert_track_points_batch(
         &self,
         session_id: &str,
@@ -96,14 +94,13 @@ impl Database {
         let mut results = Vec::with_capacity(points.len());
 
         for point in points {
-            let (gcj_lat, gcj_lng) = wgs84_to_gcj02(point.latitude, point.longitude);
             conn.execute(
                 "INSERT INTO track_points (session_id, latitude, longitude, altitude, speed, steps, timestamp)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 rusqlite::params![
                     session_id,
-                    gcj_lat,
-                    gcj_lng,
+                    point.latitude,
+                    point.longitude,
                     point.altitude,
                     point.speed,
                     point.steps,
@@ -114,8 +111,8 @@ impl Database {
             results.push(TrackPoint {
                 id: Some(id),
                 session_id: session_id.to_string(),
-                latitude: gcj_lat,
-                longitude: gcj_lng,
+                latitude: point.latitude,
+                longitude: point.longitude,
                 altitude: point.altitude,
                 speed: point.speed,
                 steps: point.steps,

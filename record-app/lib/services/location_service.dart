@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:pedometer/pedometer.dart';
 import 'package:uuid/uuid.dart';
+import '../utils/coord_transform.dart';
 import 'api_service.dart';
 
 class TrackPoint {
@@ -207,9 +208,12 @@ class LocationService extends ChangeNotifier {
         _lastGpsError = '';
       }
 
+      // WGS-84 → GCJ-02 转换（高德地图使用火星坐标系）
+      final gcj = wgs84ToGcj02(position.latitude, position.longitude);
+
       final point = TrackPoint(
-        latitude: position.latitude,
-        longitude: position.longitude,
+        latitude: gcj.latitude,
+        longitude: gcj.longitude,
         altitude: position.altitude,
         speed: position.speed,
         steps: _totalSteps, // 使用 pedometer 真实步数
