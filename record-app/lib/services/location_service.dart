@@ -59,6 +59,14 @@ class LocationService extends ChangeNotifier {
   String _uploadStatus = '';
   String get uploadStatus => _uploadStatus;
 
+  // GPS 错误信息（暴露给 UI）
+  String _lastGpsError = '';
+  String get lastGpsError => _lastGpsError;
+
+  // 计步器错误信息
+  String _lastPedometerError = '';
+  String get lastPedometerError => _lastPedometerError;
+
   RecordingState get state => _state;
   String? get sessionId => _sessionId;
   List<TrackPoint> get currentTrack => List.unmodifiable(_currentTrack);
@@ -129,12 +137,20 @@ class LocationService extends ChangeNotifier {
     _elapsed = Duration.zero;
     _state = RecordingState.recording;
     _uploadStatus = '';
+    _lastGpsError = '';
+    _lastPedometerError = '';
     notifyListeners();
 
-    debugPrint('[LocationService] 开始记录 session=$_sessionId');
+    debugPrint('[LocationService] 开始记录 session=$_sessionId startTime=$_startTime');
 
     // 启动计步器监听（真实步数）
-    _startPedometer();
+    try {
+      _startPedometer();
+    } catch (e) {
+      debugPrint('[LocationService] 计步器启动失败: $e');
+      _lastPedometerError = e.toString();
+      notifyListeners();
+    }
 
     // 立即采集一次位置
     await _collectPoint();
@@ -166,7 +182,10 @@ class LocationService extends ChangeNotifier {
         notifyListeners();
       },
       onError: (error) {
-        debugPrint('计步器错误: $error');
+        final errStr = error.toString();
+        debugPrint('计步器错误: $errStr');
+        _lastPedometerError = errStr;
+        notifyListeners();
       },
     );
   }
@@ -182,6 +201,11 @@ class LocationService extends ChangeNotifier {
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
+
+      // GPS 获取成功，清除错误
+      if (_lastGpsError.isNotEmpty) {
+        _lastGpsError = '';
+      }
 
       final point = TrackPoint(
         latitude: position.latitude,
@@ -204,7 +228,9 @@ class LocationService extends ChangeNotifier {
       _elapsed = DateTime.now().difference(_startTime!);
       notifyListeners();
     } catch (e) {
-      debugPrint('定位失败: $e');
+      final errStr = e.toString();
+      debugPrint('定位失败: $errStr');
+      _lastGpsError = 'GPS: $errStr';
       // 即使定位失败也更新用时
       if (_startTime != null) {
         _elapsed = DateTime.now().difference(_startTime!);

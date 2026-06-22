@@ -18,6 +18,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
   final _mapController = MapController();
   bool _isUploading = false;
   String _permissionMsg = '';
+  String _gpsError = '';
 
   @override
   void initState() {
@@ -27,19 +28,71 @@ class _TrackingScreenState extends State<TrackingScreen> {
     if (locService.state == RecordingState.idle) {
       _startWithPermission(locService, apiService);
     }
+    // 监听 GPS 错误
+    locService.addListener(_onLocServiceChanged);
+  }
+
+  @override
+  void dispose() {
+    context.read<LocationService>().removeListener(_onLocServiceChanged);
+    super.dispose();
+  }
+
+  void _onLocServiceChanged() {
+    if (!mounted) return;
+    final locService = context.read<LocationService>();
+    if (locService.lastGpsError != _gpsError) {
+      setState(() => _gpsError = locService.lastGpsError);
+    }
+    if (locService.lastPedometerError.isNotEmpty && mounted) {
+      _showErrorDialog('计步器错误', locService.lastPedometerError);
+    }
   }
 
   Future<void> _startWithPermission(
       LocationService locService, ApiService api) async {
-    final result = await locService.startRecording(api);
-    if (!mounted) return;
-    if (result != 'ok') {
-      setState(() => _permissionMsg = result);
-      // 权限失败后延迟返回
-      Future.delayed(const Duration(seconds: 2), () {
+    try {
+      final result = await locService.startRecording(api);
+      if (!mounted) return;
+      if (result != 'ok') {
+        setState(() => _permissionMsg = result);
+        // 权限失败后延迟返回
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) Navigator.pop(context);
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _permissionMsg = '启动失败: $e');
+      Future.delayed(const Duration(seconds: 3), () {
         if (mounted) Navigator.pop(context);
       });
     }
+  }
+
+  void _showErrorDialog(String title, String message) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.error, color: Colors.red),
+            const SizedBox(width: 8),
+            Text(title),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Text(message, style: const TextStyle(fontSize: 14)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showUploadResult(bool success, [String? errorMsg]) {
@@ -54,30 +107,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
       );
       Navigator.pop(context);
     } else {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.error, color: Colors.red),
-              SizedBox(width: 8),
-              Text('上传失败'),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Text(
-              errorMsg ?? '未知错误',
-              style: const TextStyle(fontSize: 14),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('确定'),
-            ),
-          ],
-        ),
-      );
+      _showErrorDialog('上传失败', errorMsg ?? '未知错误');
     }
   }
 
@@ -312,6 +342,25 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 ),
                 const SizedBox(height: 8),
 
+                // GPS 错误提示
+                if (_gpsError.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.gps_off, size: 14, color: Colors.orange),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            _gpsError,
+                            style: const TextStyle(fontSize: 12, color: Colors.orange),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 // 上传状态
                 if (locService.uploadStatus.isNotEmpty)
                   Padding(
@@ -329,13 +378,16 @@ class _TrackingScreenState extends State<TrackingScreen> {
                               : Colors.green,
                         ),
                         const SizedBox(width: 4),
-                        Text(
-                          locService.uploadStatus,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: locService.uploadStatus.contains('失败')
-                                ? Colors.red
-                                : Colors.green,
+                        Flexible(
+                          child: Text(
+                            locService.uploadStatus,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: locService.uploadStatus.contains('失败')
+                                  ? Colors.red
+                                  : Colors.green,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
