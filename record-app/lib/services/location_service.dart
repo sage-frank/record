@@ -117,6 +117,7 @@ class LocationService extends ChangeNotifier {
   /// 开始记录
   Future<String> startRecording(ApiService api) async {
     final permResult = await checkPermission();
+    debugPrint('[LocationService] checkPermission 结果: $permResult');
     if (permResult != 'ok') return permResult;
 
     _sessionId = _uuid.v4();
@@ -130,8 +131,13 @@ class LocationService extends ChangeNotifier {
     _uploadStatus = '';
     notifyListeners();
 
+    debugPrint('[LocationService] 开始记录 session=$_sessionId');
+
     // 启动计步器监听（真实步数）
     _startPedometer();
+
+    // 立即采集一次位置
+    await _collectPoint();
 
     // 每 3 秒采集一次位置
     _locationTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
@@ -199,11 +205,19 @@ class LocationService extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('定位失败: $e');
+      // 即使定位失败也更新用时
+      if (_startTime != null) {
+        _elapsed = DateTime.now().difference(_startTime!);
+        notifyListeners();
+      }
     }
   }
 
   Future<void> _uploadToServer(ApiService api) async {
-    if (_currentTrack.isEmpty || _sessionId == null) return;
+    if (_currentTrack.isEmpty || _sessionId == null) {
+      debugPrint('[LocationService] 跳过上传: track空=${_currentTrack.isEmpty} session=$_sessionId');
+      return;
+    }
     try {
       final lastPoints = _currentTrack.length > 2
           ? _currentTrack.sublist(_currentTrack.length - 2)
@@ -216,7 +230,7 @@ class LocationService extends ChangeNotifier {
       _uploadStatus = '已同步 ${_currentTrack.length} 个点';
       notifyListeners();
     } catch (e) {
-      _uploadStatus = '同步失败';
+      _uploadStatus = '同步失败: $e';
       debugPrint('[LocationService] 定时上传失败: $e');
       notifyListeners();
     }
@@ -252,7 +266,7 @@ class LocationService extends ChangeNotifier {
     if (_currentTrack.isEmpty || _sessionId == null) {
       debugPrint('[LocationService] 停止上传: 无数据');
       notifyListeners();
-      return false;
+      throw Exception('没有轨迹数据可上传');
     }
 
     debugPrint('[LocationService] 停止上传: session=$_sessionId 总点数=${_currentTrack.length}');
@@ -268,7 +282,7 @@ class LocationService extends ChangeNotifier {
       _uploadStatus = '上传失败';
       debugPrint('[LocationService] 停止上传失败: $e');
       notifyListeners();
-      return false;
+      rethrow;
     }
   }
 

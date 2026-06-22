@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -36,11 +37,17 @@ class ApiService {
         return jsonDecode(response.body);
       } else {
         _log('上传失败 HTTP ${response.statusCode}: ${response.body}');
-        throw Exception('上传失败: HTTP ${response.statusCode}');
+        throw Exception('上传失败: HTTP ${response.statusCode}, 响应: ${response.body}');
       }
+    } on SocketException catch (e) {
+      _log('Socket 异常: $e');
+      throw Exception('无法连接服务器: ${e.message}');
+    } on HttpException catch (e) {
+      _log('HTTP 异常: $e');
+      throw Exception('HTTP 错误: ${e.message}');
     } on FormatException catch (e) {
       _log('响应格式错误: $e');
-      throw Exception('服务器响应异常');
+      throw Exception('服务器响应格式异常: $e');
     }
   }
 
@@ -48,13 +55,21 @@ class ApiService {
   Future<List<Map<String, dynamic>>> getSessions() async {
     final url = '$baseUrl/sessions';
     _log('GET $url');
-    final response = await http.get(Uri.parse(url)).timeout(_timeout);
-    _log('响应: HTTP ${response.statusCode}');
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return List<Map<String, dynamic>>.from(data['sessions']);
-    } else {
-      throw Exception('获取会话列表失败: ${response.statusCode}');
+    try {
+      final response = await http.get(Uri.parse(url)).timeout(_timeout);
+      _log('响应: HTTP ${response.statusCode}');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(data['sessions']);
+      } else {
+        throw Exception('获取会话列表失败: HTTP ${response.statusCode}, 响应: ${response.body}');
+      }
+    } on SocketException catch (e) {
+      _log('Socket 异常: $e');
+      throw Exception('无法连接服务器: ${e.message}');
+    } on FormatException catch (e) {
+      _log('响应格式错误: $e');
+      throw Exception('服务器响应格式异常: $e');
     }
   }
 
@@ -62,12 +77,20 @@ class ApiService {
   Future<Map<String, dynamic>> getSessionTrackPoints(String sessionId) async {
     final url = '$baseUrl/sessions/$sessionId/track-points';
     _log('GET $url');
-    final response = await http.get(Uri.parse(url)).timeout(_timeout);
-    _log('响应: HTTP ${response.statusCode}');
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('获取轨迹点失败: ${response.statusCode}');
+    try {
+      final response = await http.get(Uri.parse(url)).timeout(_timeout);
+      _log('响应: HTTP ${response.statusCode}');
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('获取轨迹点失败: HTTP ${response.statusCode}, 响应: ${response.body}');
+      }
+    } on SocketException catch (e) {
+      _log('Socket 异常: $e');
+      throw Exception('无法连接服务器: ${e.message}');
+    } on FormatException catch (e) {
+      _log('响应格式错误: $e');
+      throw Exception('服务器响应格式异常: $e');
     }
   }
 
@@ -75,12 +98,20 @@ class ApiService {
   Future<Map<String, dynamic>> getSessionStats(String sessionId) async {
     final url = '$baseUrl/sessions/$sessionId/stats';
     _log('GET $url');
-    final response = await http.get(Uri.parse(url)).timeout(_timeout);
-    _log('响应: HTTP ${response.statusCode}');
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('获取统计失败: ${response.statusCode}');
+    try {
+      final response = await http.get(Uri.parse(url)).timeout(_timeout);
+      _log('响应: HTTP ${response.statusCode}');
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('获取统计失败: HTTP ${response.statusCode}, 响应: ${response.body}');
+      }
+    } on SocketException catch (e) {
+      _log('Socket 异常: $e');
+      throw Exception('无法连接服务器: ${e.message}');
+    } on FormatException catch (e) {
+      _log('响应格式错误: $e');
+      throw Exception('服务器响应格式异常: $e');
     }
   }
 }

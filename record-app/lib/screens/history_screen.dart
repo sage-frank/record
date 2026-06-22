@@ -58,8 +58,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     children: [
                       Icon(Icons.cloud_off, size: 48, color: Colors.grey[400]),
                       const SizedBox(height: 16),
-                      Text('加载失败', style: TextStyle(color: Colors.grey[600])),
+                      Text('加载失败',
+                          style: TextStyle(color: Colors.grey[600], fontSize: 16)),
                       const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Text(
+                          _error!,
+                          style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
                       FilledButton.tonal(
                         onPressed: _loadSessions,
                         child: const Text('重试'),

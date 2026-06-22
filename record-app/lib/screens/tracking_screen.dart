@@ -44,14 +44,41 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
   void _showUploadResult(bool success, [String? errorMsg]) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(success ? '上传成功！' : (errorMsg ?? '上传失败，请稍后重试')),
-        backgroundColor: success ? Colors.green : Colors.red,
-        duration: Duration(seconds: success ? 2 : 4),
-      ),
-    );
-    if (success) Navigator.pop(context);
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('上传成功！'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      Navigator.pop(context);
+    } else {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.error, color: Colors.red),
+              SizedBox(width: 8),
+              Text('上传失败'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Text(
+              errorMsg ?? '未知错误',
+              style: const TextStyle(fontSize: 14),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override
