@@ -225,6 +225,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
           _buildMetricsGrid(locService),
           const SizedBox(height: 16),
           _buildSyncCard(locService),
+          const SizedBox(height: 16),
+          _buildDebugPanel(locService),
           if (_gpsError.isNotEmpty) ...[
             const SizedBox(height: 16),
             _buildWarningCard(_gpsError),
@@ -427,6 +429,154 @@ class _TrackingScreenState extends State<TrackingScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildDebugPanel(LocationService locService) {
+    final lastPosition = locService.lastRawPosition;
+    final lastPointAt = locService.lastPointAt;
+    final debugEvents = locService.debugEvents;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.bug_report, color: Colors.deepPurple),
+                const SizedBox(width: 8),
+                Text(
+                  '运行诊断',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _buildDebugRow('记录状态', locService.debugStateLabel),
+            _buildDebugRow('权限检查', '${locService.permissionChecked}'),
+            _buildDebugRow('定位权限', locService.debugPermissionLabel),
+            _buildDebugRow('定位服务', '${locService.locationServiceEnabled}'),
+            _buildDebugRow('后台定位权限', locService.backgroundLocationPermission),
+            _buildDebugRow('运动权限', locService.pedometerPermission),
+            _buildDebugRow('会话 ID', locService.sessionId ?? '--'),
+            _buildDebugRow('轨迹点数', '${locService.currentTrack.length}'),
+            _buildDebugRow(
+              '已上传点数',
+              _extractUploadedCount(locService.uploadStatus),
+            ),
+            _buildDebugRow('最近采点时间', lastPointAt?.toIso8601String() ?? '--'),
+            _buildDebugRow('距离上次采点', _formatSince(lastPointAt)),
+            _buildDebugRow(
+              '最近原始坐标',
+              lastPosition == null
+                  ? '--'
+                  : '${lastPosition.latitude.toStringAsFixed(6)}, ${lastPosition.longitude.toStringAsFixed(6)}',
+            ),
+            _buildDebugRow(
+              '最近速度',
+              lastPosition?.speed == null
+                  ? '--'
+                  : '${lastPosition!.speed.toStringAsFixed(2)} m/s',
+            ),
+            _buildDebugRow(
+              'GPS 错误',
+              locService.lastGpsError.isEmpty ? '--' : locService.lastGpsError,
+            ),
+            _buildDebugRow(
+              '计步器错误',
+              locService.lastPedometerError.isEmpty
+                  ? '--'
+                  : locService.lastPedometerError,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '事件日志',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child:
+                  debugEvents.isEmpty
+                      ? const Text('暂无日志')
+                      : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children:
+                            debugEvents
+                                .take(12)
+                                .map(
+                                  (event) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 6),
+                                    child: Text(
+                                      event,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontFamily: 'monospace',
+                                      ),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                      ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '当前版本仅用于真机调试，下一版会移除该诊断面板。',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDebugRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 96,
+            child: Text(
+              '$label:',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _extractUploadedCount(String uploadStatus) {
+    if (uploadStatus.isEmpty) {
+      return '--';
+    }
+    final match = RegExp(r'(\d+)').firstMatch(uploadStatus);
+    return match?.group(1) ?? uploadStatus;
+  }
+
+  String _formatSince(DateTime? time) {
+    if (time == null) {
+      return '--';
+    }
+    return '${DateTime.now().difference(time).inSeconds}s';
   }
 
   Widget _buildWarningCard(String message) {

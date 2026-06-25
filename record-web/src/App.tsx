@@ -22,6 +22,8 @@ import {
   ClockCircleOutlined,
   FieldNumberOutlined,
   DashboardOutlined,
+  PauseOutlined,
+  PlayCircleOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
@@ -72,6 +74,7 @@ function App() {
   const [trackPoints, setTrackPoints] = useState<TrackPoint[]>([]);
   const [pointsLoading, setPointsLoading] = useState(false);
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchSessions = useCallback(async () => {
@@ -93,7 +96,11 @@ function App() {
   // 清理轮询
   useEffect(() => {
     return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      setIsPolling(false);
     };
   }, []);
 
@@ -118,6 +125,7 @@ function App() {
   // 启动实时轮询
   const startPolling = (sessionId: string) => {
     if (pollingRef.current) clearInterval(pollingRef.current);
+    setIsPolling(true);
     pollingRef.current = setInterval(async () => {
       try {
         const [pointsRes, statsRes] = await Promise.all([
@@ -134,6 +142,14 @@ function App() {
     }, 3000); // 每 3 秒刷新
   };
 
+  const stopPolling = () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    setIsPolling(false);
+  };
+
   const handleSelectSession = (session: Session) => {
     setSelectedSession(session);
     fetchTrackPoints(session.session_id);
@@ -148,10 +164,7 @@ function App() {
         setSelectedSession(null);
         setTrackPoints([]);
         setSessionStats(null);
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
-        }
+        stopPolling();
       }
       fetchSessions();
     } catch {
@@ -318,11 +331,27 @@ function App() {
                     prefix={<DashboardOutlined />}
                     valueStyle={{ fontSize: 14 }}
                   />
-                  {pollingRef.current && (
-                    <Tag color="processing" style={{ marginTop: 4 }}>
-                      实时监控中
+                  <div style={{ marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <Tag color={isPolling ? 'processing' : 'default'}>
+                      {isPolling ? '实时监控中' : '监控已暂停'}
                     </Tag>
-                  )}
+                    <Button
+                      size="small"
+                      type={isPolling ? 'default' : 'primary'}
+                      icon={isPolling ? <PauseOutlined /> : <PlayCircleOutlined />}
+                      onClick={() => {
+                        if (!selectedSession) return;
+                        if (isPolling) {
+                          stopPolling();
+                        } else {
+                          fetchTrackPoints(selectedSession.session_id);
+                          startPolling(selectedSession.session_id);
+                        }
+                      }}
+                    >
+                      {isPolling ? '暂停监控' : '开始监控'}
+                    </Button>
+                  </div>
                 </Col>
               </Row>
             </div>
@@ -344,7 +373,7 @@ function App() {
                 <TrackMap
                   points={trackPoints}
                   showLiveStats={
-                    !!pollingRef.current && sessionStats != null
+                    isPolling && sessionStats != null
                   }
                   sessionStats={sessionStats}
                 />
