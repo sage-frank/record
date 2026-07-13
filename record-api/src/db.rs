@@ -27,98 +27,99 @@ impl Database {
         let db = Database {
             conn: Mutex::new(conn),
         };
-        db.init_tables()?;
-        db.migrate_add_steps()?;
-        db.init_weight_loss_tables()?;
+
+        // db.init_tables()?;
+        // db.migrate_add_steps()?;
+        // db.init_weight_loss_tables()?;
         Ok(db)
     }
 
-    fn init_tables(&self) -> Result<()> {
-        let conn = self.conn.lock().expect("database lock poisoned");
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS track_points (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id  TEXT NOT NULL,
-                latitude    REAL NOT NULL,
-                longitude   REAL NOT NULL,
-                altitude    REAL,
-                speed       REAL,
-                steps       INTEGER DEFAULT 0,
-                timestamp   TEXT NOT NULL,
-                created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-            CREATE INDEX IF NOT EXISTS idx_track_points_session
-                ON track_points(session_id);
-            CREATE INDEX IF NOT EXISTS idx_track_points_timestamp
-                ON track_points(session_id, timestamp);",
-        )?;
-        Ok(())
-    }
+    // fn init_tables(&self) -> Result<()> {
+    //     let conn = self.conn.lock().expect("database lock poisoned");
+    //     conn.execute_batch(
+    //         "CREATE TABLE IF NOT EXISTS track_points (
+    //             id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    //             session_id  TEXT NOT NULL,
+    //             latitude    REAL NOT NULL,
+    //             longitude   REAL NOT NULL,
+    //             altitude    REAL,
+    //             speed       REAL,
+    //             steps       INTEGER DEFAULT 0,
+    //             timestamp   TEXT NOT NULL,
+    //             created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    //         );
+    //         CREATE INDEX IF NOT EXISTS idx_track_points_session
+    //             ON track_points(session_id);
+    //         CREATE INDEX IF NOT EXISTS idx_track_points_timestamp
+    //             ON track_points(session_id, timestamp);",
+    //     )?;
+    //     Ok(())
+    // }
 
     /// 初始化减重模块表
-    fn init_weight_loss_tables(&self) -> Result<()> {
-        let conn = self.conn.lock().expect("database lock poisoned");
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS user_profile (
-                id                  INTEGER PRIMARY KEY DEFAULT 1,
-                name                TEXT NOT NULL DEFAULT '',
-                current_weight_kg   REAL NOT NULL DEFAULT 70,
-                target_weight_kg    REAL NOT NULL DEFAULT 60,
-                height_cm           REAL NOT NULL DEFAULT 170,
-                age                 INTEGER NOT NULL DEFAULT 30,
-                gender              TEXT NOT NULL DEFAULT 'male',
-                daily_calorie_goal  INTEGER NOT NULL DEFAULT 2000,
-                updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-            INSERT OR IGNORE INTO user_profile (id) VALUES (1);
+    // fn init_weight_loss_tables(&self) -> Result<()> {
+    //     let conn = self.conn.lock().expect("database lock poisoned");
+    //     conn.execute_batch(
+    //         "CREATE TABLE IF NOT EXISTS user_profile (
+    //             id                  INTEGER PRIMARY KEY DEFAULT 1,
+    //             name                TEXT NOT NULL DEFAULT '',
+    //             current_weight_kg   REAL NOT NULL DEFAULT 70,
+    //             target_weight_kg    REAL NOT NULL DEFAULT 60,
+    //             height_cm           REAL NOT NULL DEFAULT 170,
+    //             age                 INTEGER NOT NULL DEFAULT 30,
+    //             gender              TEXT NOT NULL DEFAULT 'male',
+    //             daily_calorie_goal  INTEGER NOT NULL DEFAULT 2000,
+    //             updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+    //         );
+    //         INSERT OR IGNORE INTO user_profile (id) VALUES (1);
 
-            CREATE TABLE IF NOT EXISTS weight_history (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                weight_kg   REAL NOT NULL,
-                recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
+    //         CREATE TABLE IF NOT EXISTS weight_history (
+    //             id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    //             weight_kg   REAL NOT NULL,
+    //             recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+    //         );
 
-            CREATE TABLE IF NOT EXISTS diet_records (
-                id          TEXT PRIMARY KEY,
-                date        TEXT NOT NULL,
-                meal_type   TEXT NOT NULL,
-                food_name   TEXT NOT NULL,
-                calories    REAL NOT NULL DEFAULT 0,
-                protein_g   REAL DEFAULT 0,
-                carbs_g     REAL DEFAULT 0,
-                fat_g       REAL DEFAULT 0,
-                created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-            CREATE INDEX IF NOT EXISTS idx_diet_date ON diet_records(date);
+    //         CREATE TABLE IF NOT EXISTS diet_records (
+    //             id          TEXT PRIMARY KEY,
+    //             date        TEXT NOT NULL,
+    //             meal_type   TEXT NOT NULL,
+    //             food_name   TEXT NOT NULL,
+    //             calories    REAL NOT NULL DEFAULT 0,
+    //             protein_g   REAL DEFAULT 0,
+    //             carbs_g     REAL DEFAULT 0,
+    //             fat_g       REAL DEFAULT 0,
+    //             created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    //         );
+    //         CREATE INDEX IF NOT EXISTS idx_diet_date ON diet_records(date);
 
-            CREATE TABLE IF NOT EXISTS exercise_plans (
-                id                  TEXT PRIMARY KEY,
-                name                TEXT NOT NULL,
-                description         TEXT DEFAULT '',
-                target_duration_min INTEGER DEFAULT 30,
-                target_distance_km  REAL DEFAULT 5,
-                target_calories     INTEGER DEFAULT 300,
-                weekdays            TEXT NOT NULL DEFAULT '[1,3,5]',
-                is_active           INTEGER NOT NULL DEFAULT 1,
-                created_at          TEXT NOT NULL DEFAULT (datetime('now'))
-            );",
-        )?;
-        Ok(())
-    }
+    //         CREATE TABLE IF NOT EXISTS exercise_plans (
+    //             id                  TEXT PRIMARY KEY,
+    //             name                TEXT NOT NULL,
+    //             description         TEXT DEFAULT '',
+    //             target_duration_min INTEGER DEFAULT 30,
+    //             target_distance_km  REAL DEFAULT 5,
+    //             target_calories     INTEGER DEFAULT 300,
+    //             weekdays            TEXT NOT NULL DEFAULT '[1,3,5]',
+    //             is_active           INTEGER NOT NULL DEFAULT 1,
+    //             created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+    //         );",
+    //     )?;
+    //     Ok(())
+    // }
 
     /// 兼容旧数据库：添加 steps 列（使用 PRAGMA 检测）
-    fn migrate_add_steps(&self) -> Result<()> {
-        let conn = self.conn.lock().expect("database lock poisoned");
-        let mut stmt = conn.prepare("PRAGMA table_info(track_points)")?;
-        let has_steps = stmt
-            .query_map([], |row| row.get::<_, String>(1))?
-            .filter_map(|r| r.ok())
-            .any(|name| name == "steps");
-        if !has_steps {
-            conn.execute_batch("ALTER TABLE track_points ADD COLUMN steps INTEGER DEFAULT 0;")?;
-        }
-        Ok(())
-    }
+    // fn migrate_add_steps(&self) -> Result<()> {
+    //     let conn = self.conn.lock().expect("database lock poisoned");
+    //     let mut stmt = conn.prepare("PRAGMA table_info(track_points)")?;
+    //     let has_steps = stmt
+    //         .query_map([], |row| row.get::<_, String>(1))?
+    //         .filter_map(|r| r.ok())
+    //         .any(|name| name == "steps");
+    //     if !has_steps {
+    //         conn.execute_batch("ALTER TABLE track_points ADD COLUMN steps INTEGER DEFAULT 0;")?;
+    //     }
+    //     Ok(())
+    // }
 
     /// 插入单个轨迹点
     pub fn insert_track_point(
