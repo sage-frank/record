@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -6,11 +7,49 @@ import 'package:http/http.dart' as http;
 class ApiService {
   // 远程服务器地址
   static const String baseUrl = 'http://39.105.113.213:3001/api';
+  static const String _debugServerUrl = String.fromEnvironment(
+    'DEBUG_SERVER_URL',
+    defaultValue: '',
+  );
+  static const String _debugSessionId = String.fromEnvironment(
+    'DEBUG_SESSION_ID',
+    defaultValue: 'api-calls-not-visible',
+  );
+  static const String _debugRunId = String.fromEnvironment(
+    'DEBUG_RUN_ID',
+    defaultValue: 'pre',
+  );
   static const Duration _timeout = Duration(seconds: 15);
+  static const Duration _debugTimeout = Duration(seconds: 2);
 
   void _log(String msg) {
     final ts = DateTime.now().toIso8601String();
     debugPrint('[$ts] [API] $msg');
+  }
+
+  Future<void> _reportDebugEvent({
+    required String hypothesisId,
+    required String msg,
+    Map<String, dynamic>? data,
+  }) async {
+    if (_debugServerUrl.isEmpty) return;
+    try {
+      await http
+          .post(
+            Uri.parse(_debugServerUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'sessionId': _debugSessionId,
+              'runId': _debugRunId,
+              'hypothesisId': hypothesisId,
+              'location': 'api_service.dart',
+              'msg': '[DEBUG] $msg',
+              'data': {'baseUrl': baseUrl, ...(data ?? const {})},
+              'ts': DateTime.now().millisecondsSinceEpoch,
+            }),
+          )
+          .timeout(_debugTimeout);
+    } catch (_) {}
   }
 
   /// 批量上传轨迹点
@@ -157,48 +196,148 @@ class ApiService {
   Future<void> updateProfile(Map<String, dynamic> profile) async {
     final url = '$baseUrl/profile';
     _log('PUT $url');
-    final response = await http
-        .put(
-          Uri.parse(url),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(profile),
-        )
-        .timeout(_timeout);
-    if (response.statusCode != 200) throw Exception('更新档案失败');
+    unawaited(
+      _reportDebugEvent(
+        hypothesisId: 'A',
+        msg: 'request PUT /profile',
+        data: {'method': 'PUT', 'url': url},
+      ),
+    );
+    try {
+      final response = await http
+          .put(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(profile),
+          )
+          .timeout(_timeout);
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'A',
+          msg: 'response PUT /profile',
+          data: {'status': response.statusCode},
+        ),
+      );
+      if (response.statusCode != 200) throw Exception('更新档案失败');
+    } catch (e) {
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'B',
+          msg: 'error PUT /profile',
+          data: {'error': e.toString()},
+        ),
+      );
+      rethrow;
+    }
   }
 
   /// 获取体重历史
   Future<List<Map<String, dynamic>>> getWeightHistory() async {
     final url = '$baseUrl/weight-history';
-    final response = await http.get(Uri.parse(url)).timeout(_timeout);
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return List<Map<String, dynamic>>.from(data['records']);
+    unawaited(
+      _reportDebugEvent(
+        hypothesisId: 'A',
+        msg: 'request GET /weight-history',
+        data: {'method': 'GET', 'url': url},
+      ),
+    );
+    try {
+      final response = await http.get(Uri.parse(url)).timeout(_timeout);
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'A',
+          msg: 'response GET /weight-history',
+          data: {'status': response.statusCode},
+        ),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(data['records']);
+      }
+      throw Exception('获取体重历史失败');
+    } catch (e) {
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'B',
+          msg: 'error GET /weight-history',
+          data: {'error': e.toString()},
+        ),
+      );
+      rethrow;
     }
-    throw Exception('获取体重历史失败');
   }
 
   /// 添加体重记录
   Future<void> addWeightRecord(double weightKg) async {
     final url = '$baseUrl/weight-history';
-    final response = await http
-        .post(
-          Uri.parse(url),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'weight_kg': weightKg}),
-        )
-        .timeout(_timeout);
-    if (response.statusCode != 200) {
-      throw Exception('添加体重记录失败: HTTP ${response.statusCode}');
+    unawaited(
+      _reportDebugEvent(
+        hypothesisId: 'A',
+        msg: 'request POST /weight-history',
+        data: {'method': 'POST', 'url': url, 'weight_kg': weightKg},
+      ),
+    );
+    try {
+      final response = await http
+          .post(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'weight_kg': weightKg}),
+          )
+          .timeout(_timeout);
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'A',
+          msg: 'response POST /weight-history',
+          data: {'status': response.statusCode},
+        ),
+      );
+      if (response.statusCode != 200) {
+        throw Exception('添加体重记录失败: HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'B',
+          msg: 'error POST /weight-history',
+          data: {'error': e.toString()},
+        ),
+      );
+      rethrow;
     }
   }
 
   /// 删除体重记录
   Future<void> deleteWeightRecord(int id) async {
     final url = '$baseUrl/weight-history/$id';
-    final response = await http.delete(Uri.parse(url)).timeout(_timeout);
-    if (response.statusCode != 200) {
-      throw Exception('删除体重记录失败: HTTP ${response.statusCode}');
+    unawaited(
+      _reportDebugEvent(
+        hypothesisId: 'A',
+        msg: 'request DELETE /weight-history',
+        data: {'method': 'DELETE', 'url': url, 'id': id},
+      ),
+    );
+    try {
+      final response = await http.delete(Uri.parse(url)).timeout(_timeout);
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'A',
+          msg: 'response DELETE /weight-history',
+          data: {'status': response.statusCode},
+        ),
+      );
+      if (response.statusCode != 200) {
+        throw Exception('删除体重记录失败: HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'B',
+          msg: 'error DELETE /weight-history',
+          data: {'error': e.toString()},
+        ),
+      );
+      rethrow;
     }
   }
 
@@ -206,70 +345,260 @@ class ApiService {
   Future<List<Map<String, dynamic>>> getDietRecords({String? date}) async {
     var url = '$baseUrl/diet-records';
     if (date != null) url += '?date=$date';
-    final response = await http.get(Uri.parse(url)).timeout(_timeout);
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return List<Map<String, dynamic>>.from(data['records']);
+    unawaited(
+      _reportDebugEvent(
+        hypothesisId: 'A',
+        msg: 'request GET /diet-records',
+        data: {'method': 'GET', 'url': url, 'date': date},
+      ),
+    );
+    try {
+      final response = await http.get(Uri.parse(url)).timeout(_timeout);
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'A',
+          msg: 'response GET /diet-records',
+          data: {'status': response.statusCode},
+        ),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(data['records']);
+      }
+      throw Exception('获取饮食记录失败');
+    } catch (e) {
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'B',
+          msg: 'error GET /diet-records',
+          data: {'error': e.toString()},
+        ),
+      );
+      rethrow;
     }
-    throw Exception('获取饮食记录失败');
   }
 
   /// 添加饮食记录
   Future<void> addDietRecord(Map<String, dynamic> record) async {
     final url = '$baseUrl/diet-records';
-    await http
-        .post(
-          Uri.parse(url),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(record),
-        )
-        .timeout(_timeout);
+    unawaited(
+      _reportDebugEvent(
+        hypothesisId: 'A',
+        msg: 'request POST /diet-records',
+        data: {'method': 'POST', 'url': url},
+      ),
+    );
+    try {
+      final response = await http
+          .post(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(record),
+          )
+          .timeout(_timeout);
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'A',
+          msg: 'response POST /diet-records',
+          data: {'status': response.statusCode},
+        ),
+      );
+      if (response.statusCode != 200) {
+        throw Exception('添加饮食记录失败: HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'B',
+          msg: 'error POST /diet-records',
+          data: {'error': e.toString()},
+        ),
+      );
+      rethrow;
+    }
   }
 
   /// 删除饮食记录
   Future<void> deleteDietRecord(String id) async {
     final url = '$baseUrl/diet-records/$id';
-    await http.delete(Uri.parse(url)).timeout(_timeout);
+    unawaited(
+      _reportDebugEvent(
+        hypothesisId: 'A',
+        msg: 'request DELETE /diet-records',
+        data: {'method': 'DELETE', 'url': url, 'id': id},
+      ),
+    );
+    try {
+      final response = await http.delete(Uri.parse(url)).timeout(_timeout);
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'A',
+          msg: 'response DELETE /diet-records',
+          data: {'status': response.statusCode},
+        ),
+      );
+      if (response.statusCode != 200) {
+        throw Exception('删除饮食记录失败: HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'B',
+          msg: 'error DELETE /diet-records',
+          data: {'error': e.toString()},
+        ),
+      );
+      rethrow;
+    }
   }
 
   /// 获取运动计划
   Future<List<Map<String, dynamic>>> getPlans() async {
     final url = '$baseUrl/plans';
-    final response = await http.get(Uri.parse(url)).timeout(_timeout);
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return List<Map<String, dynamic>>.from(data['plans']);
+    unawaited(
+      _reportDebugEvent(
+        hypothesisId: 'A',
+        msg: 'request GET /plans',
+        data: {'method': 'GET', 'url': url},
+      ),
+    );
+    try {
+      final response = await http.get(Uri.parse(url)).timeout(_timeout);
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'A',
+          msg: 'response GET /plans',
+          data: {'status': response.statusCode},
+        ),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(data['plans']);
+      }
+      throw Exception('获取计划失败');
+    } catch (e) {
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'B',
+          msg: 'error GET /plans',
+          data: {'error': e.toString()},
+        ),
+      );
+      rethrow;
     }
-    throw Exception('获取计划失败');
   }
 
   /// 添加运动计划
   Future<void> addPlan(Map<String, dynamic> plan) async {
     final url = '$baseUrl/plans';
-    await http
-        .post(
-          Uri.parse(url),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(plan),
-        )
-        .timeout(_timeout);
+    unawaited(
+      _reportDebugEvent(
+        hypothesisId: 'A',
+        msg: 'request POST /plans',
+        data: {'method': 'POST', 'url': url},
+      ),
+    );
+    try {
+      final response = await http
+          .post(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(plan),
+          )
+          .timeout(_timeout);
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'A',
+          msg: 'response POST /plans',
+          data: {'status': response.statusCode},
+        ),
+      );
+      if (response.statusCode != 200) {
+        throw Exception('添加计划失败: HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'B',
+          msg: 'error POST /plans',
+          data: {'error': e.toString()},
+        ),
+      );
+      rethrow;
+    }
   }
 
   /// 更新运动计划
   Future<void> updatePlan(String id, Map<String, dynamic> plan) async {
     final url = '$baseUrl/plans/$id';
-    await http
-        .put(
-          Uri.parse(url),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(plan),
-        )
-        .timeout(_timeout);
+    unawaited(
+      _reportDebugEvent(
+        hypothesisId: 'A',
+        msg: 'request PUT /plans',
+        data: {'method': 'PUT', 'url': url, 'id': id},
+      ),
+    );
+    try {
+      final response = await http
+          .put(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(plan),
+          )
+          .timeout(_timeout);
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'A',
+          msg: 'response PUT /plans',
+          data: {'status': response.statusCode},
+        ),
+      );
+      if (response.statusCode != 200) {
+        throw Exception('更新计划失败: HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'B',
+          msg: 'error PUT /plans',
+          data: {'error': e.toString()},
+        ),
+      );
+      rethrow;
+    }
   }
 
   /// 删除运动计划
   Future<void> deletePlan(String id) async {
     final url = '$baseUrl/plans/$id';
-    await http.delete(Uri.parse(url)).timeout(_timeout);
+    unawaited(
+      _reportDebugEvent(
+        hypothesisId: 'A',
+        msg: 'request DELETE /plans',
+        data: {'method': 'DELETE', 'url': url, 'id': id},
+      ),
+    );
+    try {
+      final response = await http.delete(Uri.parse(url)).timeout(_timeout);
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'A',
+          msg: 'response DELETE /plans',
+          data: {'status': response.statusCode},
+        ),
+      );
+      if (response.statusCode != 200) {
+        throw Exception('删除计划失败: HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      unawaited(
+        _reportDebugEvent(
+          hypothesisId: 'B',
+          msg: 'error DELETE /plans',
+          data: {'error': e.toString()},
+        ),
+      );
+      rethrow;
+    }
   }
 }
