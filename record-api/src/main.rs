@@ -7,9 +7,10 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
+use std::time::Duration;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
-use tracing::info;
+use tracing::{info, info_span};
 use tracing_subscriber::EnvFilter;
 
 use db::Database;
@@ -43,6 +44,33 @@ async fn main() {
         .route("/{id}/stats", get(get_session_stats))
         .with_state(state.clone());
 
+    // 统一结构化请求日志
+    let trace_layer = TraceLayer::new_for_http()
+        .make_span_with(|request: &axum::http::Request<_>| {
+            info_span!(
+                "api",
+                method = %request.method(),
+                path = request.uri().path(),
+                query = request.uri().query().unwrap_or(""),
+            )
+        })
+        .on_response(
+            |response: &axum::http::Response<_>, latency: Duration, _span: &tracing::Span| {
+                let status = response.status().as_u16();
+                let body_size = response
+                    .headers()
+                    .get("content-length")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("-");
+                info!(
+                    status = status,
+                    latency_ms = latency.as_millis() as u64,
+                    body_bytes = body_size,
+                    "completed"
+                );
+            },
+        );
+
     let app = Router::new()
         .route("/api/track-points", post(add_track_point))
         .route("/api/track-points/batch", post(add_track_points_batch))
@@ -62,7 +90,7 @@ async fn main() {
         .route("/api/plans", get(get_plans).post(add_plan))
         .route("/api/plans/{id}", put(update_plan).delete(delete_plan))
         .layer(cors)
-        .layer(TraceLayer::new_for_http())
+        .layer(trace_layer)
         .with_state(state);
 
     let addr = "0.0.0.0:3001";

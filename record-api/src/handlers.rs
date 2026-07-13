@@ -32,7 +32,7 @@ pub async fn add_track_point(
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| Uuid::new_v4().to_string());
     info!(
-        "POST /api/track-points session={session_id} lat={} lng={} speed={:?} steps={:?}",
+        "track_point session={session_id} lat={} lng={} speed={:?} steps={:?}",
         input.latitude, input.longitude, input.speed, input.steps
     );
     let point = db
@@ -66,14 +66,14 @@ pub async fn add_track_points_batch(
         batch.session_id.clone()
     };
     info!(
-        "POST /api/track-points/batch session={session_id} point_count={}",
+        "track_points_batch session={session_id} count={}",
         batch.points.len()
     );
     let points = db
         .insert_track_points_batch(&session_id, &batch.points)
         .map_err(|e| internal_error("batch insert error", e))?;
     info!(
-        "batch insert OK session={session_id} inserted={}",
+        "batch_insert_ok session={session_id} inserted={}",
         points.len()
     );
     Ok(Json(
@@ -88,7 +88,7 @@ pub async fn get_sessions(
     let sessions = db
         .get_sessions()
         .map_err(|e| internal_error("get sessions error", e))?;
-    info!("GET /api/sessions count={}", sessions.len());
+    info!("sessions_list count={}", sessions.len());
     Ok(Json(serde_json::json!({"sessions": sessions})))
 }
 
@@ -97,7 +97,6 @@ pub async fn get_session_track_points(
     State(db): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    info!("GET /api/sessions/{session_id}/track-points");
     let points = db
         .get_session_track_points(&session_id)
         .map_err(|e| internal_error("get points error", e))?;
@@ -127,7 +126,7 @@ pub async fn delete_session(
     State(db): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    info!("DELETE /api/sessions/{session_id}");
+    info!("session_delete id={session_id}");
     let deleted = db
         .delete_session(&session_id)
         .map_err(|e| internal_error("delete error", e))?;
