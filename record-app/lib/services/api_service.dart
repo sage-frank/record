@@ -114,4 +114,20 @@ class ApiService {
       throw Exception('服务器响应格式异常: $e');
     }
   }
+
+  /// 删除会话
+  Future<void> deleteSession(String sessionId) async {
+    final url = '$baseUrl/sessions/$sessionId';
+    _log('DELETE $url');
+    try {
+      final response = await http.delete(Uri.parse(url)).timeout(_timeout);
+      _log('响应: HTTP ${response.statusCode}');
+      if (response.statusCode != 200) {
+        throw Exception('删除失败: HTTP ${response.statusCode}');
+      }
+    } on SocketException catch (e) {
+      _log('Socket 异常: $e');
+      throw Exception('无法连接服务器: ${e.message}');
+    }
+  }
 }

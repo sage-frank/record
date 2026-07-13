@@ -3,13 +3,14 @@ import 'package:provider/provider.dart';
 
 import 'services/api_service.dart';
 import 'services/location_service.dart';
-import 'screens/home_screen.dart';
-
+import 'services/storage_service.dart';
+import 'screens/login_screen.dart';
+import 'screens/main_shell.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const RecordApp());
 }
-
 
 class RecordApp extends StatelessWidget {
   const RecordApp({super.key});
@@ -19,18 +20,42 @@ class RecordApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         Provider(create: (_) => ApiService()),
+        Provider(create: (_) => StorageService()),
         ChangeNotifierProvider(create: (_) => LocationService()),
       ],
       child: MaterialApp(
-        title: '运动记录',
+        title: '减重助手',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
-          colorSchemeSeed: Colors.teal,
+          colorSchemeSeed: const Color(0xFF2E7D5B),
           useMaterial3: true,
           brightness: Brightness.light,
         ),
-        home: const HomeScreen(),
+        home: const AuthGate(),
       ),
+    );
+  }
+}
+
+/// 判断是否需要登录
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: context.read<StorageService>().hasPin(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.data == true) {
+          return const LoginScreen();
+        }
+        return const LoginScreen(isSetup: true);
+      },
     );
   }
 }
