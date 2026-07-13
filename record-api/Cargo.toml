@@ -13,3 +13,22 @@ tower-http = { version = "0.5", features = ["cors", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
+
+
+[profile.dev]
+opt-level=1
+debug=true
+debug-assertions=true
+overflow-checks=true
+panic="unwind"
+
+
+[profile.release]
+opt-level = 3
+debug = true
+debug-assertions = false
+overflow-checks = false
+lto = "thin"
+codegen-units = 1
+panic = "unwind"
+strip = "debuginfo"
