@@ -46,14 +46,26 @@ class DietRecord {
     'fatG': fatG,
   };
 
+  Map<String, dynamic> toApiJson() => {
+    'id': id,
+    'date': date.toIso8601String(),
+    'meal_type': mealType,
+    'food_name': foodName,
+    'calories': calories,
+    'protein_g': proteinG == 0 ? null : proteinG,
+    'carbs_g': carbsG == 0 ? null : carbsG,
+    'fat_g': fatG == 0 ? null : fatG,
+  };
+
   factory DietRecord.fromJson(Map<String, dynamic> json) => DietRecord(
     id: json['id'] as String,
     date: DateTime.parse(json['date'] as String),
-    mealType: json['mealType'] as String,
-    foodName: json['foodName'] as String,
+    mealType: (json['mealType'] ?? json['meal_type']) as String,
+    foodName: (json['foodName'] ?? json['food_name']) as String,
     calories: (json['calories'] as num).toDouble(),
-    proteinG: (json['proteinG'] as num?)?.toDouble() ?? 0,
-    carbsG: (json['carbsG'] as num?)?.toDouble() ?? 0,
-    fatG: (json['fatG'] as num?)?.toDouble() ?? 0,
+    proteinG:
+        ((json['proteinG'] ?? json['protein_g']) as num?)?.toDouble() ?? 0,
+    carbsG: ((json['carbsG'] ?? json['carbs_g']) as num?)?.toDouble() ?? 0,
+    fatG: ((json['fatG'] ?? json['fat_g']) as num?)?.toDouble() ?? 0,
   );
 }

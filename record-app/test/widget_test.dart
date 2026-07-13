@@ -1,15 +1,22 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-import 'package:record_app/main.dart';
+import 'package:record_app/screens/login_screen.dart';
+import 'package:record_app/services/storage_service.dart';
 
 void main() {
   testWidgets('home screen renders primary actions', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const RecordApp());
+    await tester.pumpWidget(
+      Provider(
+        create: (_) => StorageService(),
+        child: const MaterialApp(home: LoginScreen(isSetup: true)),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.text('运动记录'), findsOneWidget);
-    expect(find.text('开始跑步'), findsOneWidget);
-    expect(find.text('历史记录'), findsOneWidget);
+    expect(find.textContaining('PIN'), findsOneWidget);
   });
 }

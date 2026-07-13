@@ -60,9 +60,7 @@ class StorageService {
     final history = await loadWeightHistory();
     // 同一天只保留最新
     final today = date.toIso8601String().substring(0, 10);
-    history.removeWhere(
-      (r) => (r['date'] as String).startsWith(today),
-    );
+    history.removeWhere((r) => (r['date'] as String).startsWith(today));
     history.add({'weight': weightKg, 'date': date.toIso8601String()});
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyWeightHistory, jsonEncode(history));
@@ -103,8 +101,9 @@ class StorageService {
   Future<double> getTodayCalories() async {
     final records = await loadDietRecords();
     final today = DateTime.now().toIso8601String().substring(0, 10);
-    final filtered = records
-        .where((r) => r.date.toIso8601String().startsWith(today));
+    final filtered = records.where(
+      (r) => r.date.toIso8601String().startsWith(today),
+    );
     double total = 0.0;
     for (final r in filtered) {
       total += r.calories;

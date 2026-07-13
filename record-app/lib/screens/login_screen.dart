@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../services/storage_service.dart';
@@ -113,9 +112,8 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
-    final title = widget.isSetup
-        ? (_confirmMode ? '确认 PIN' : '设置登录 PIN')
-        : '输入 PIN 解锁';
+    final title =
+        widget.isSetup ? (_confirmMode ? '确认 PIN' : '设置登录 PIN') : '输入 PIN 解锁';
 
     return Scaffold(
       body: SafeArea(
@@ -126,12 +124,17 @@ class _LoginScreenState extends State<LoginScreen>
               animation: _shakeController,
               builder: (context, child) {
                 final shake = _shakeController.value;
-                final offset = shake < 0.5
-                    ? shake * 30
-                    : (1 - shake) * 30;
+                final offset = shake < 0.5 ? shake * 30 : (1 - shake) * 30;
                 return Transform.translate(
                   offset: Offset(
-                    offset * (shake < 0.25 ? 1 : shake < 0.5 ? -1 : shake < 0.75 ? 1 : -1),
+                    offset *
+                        (shake < 0.25
+                            ? 1
+                            : shake < 0.5
+                            ? -1
+                            : shake < 0.75
+                            ? 1
+                            : -1),
                     0,
                   ),
                   child: child,
@@ -168,9 +171,9 @@ class _LoginScreenState extends State<LoginScreen>
                   const SizedBox(height: 8),
                   Text(
                     '减重助手',
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Colors.grey[500],
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyLarge?.copyWith(color: Colors.grey[500]),
                   ),
                   const SizedBox(height: 32),
                   // PIN dots
@@ -184,9 +187,10 @@ class _LoginScreenState extends State<LoginScreen>
                         height: 16,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: i < _pin.length
-                              ? Theme.of(context).colorScheme.primary
-                              : Colors.grey[300],
+                          color:
+                              i < _pin.length
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.grey[300],
                         ),
                       );
                     }),
@@ -219,7 +223,20 @@ class _LoginScreenState extends State<LoginScreen>
       crossAxisSpacing: 8,
       childAspectRatio: 2,
       children: [
-        for (final key in ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'del'])
+        for (final key in [
+          '1',
+          '2',
+          '3',
+          '4',
+          '5',
+          '6',
+          '7',
+          '8',
+          '9',
+          'clear',
+          '0',
+          'del',
+        ])
           _buildKey(key),
       ],
     );
@@ -235,15 +252,16 @@ class _LoginScreenState extends State<LoginScreen>
         borderRadius: BorderRadius.circular(12),
         onTap: () => _onKeyTap(key),
         child: Center(
-          child: isDelete
-              ? Icon(Icons.backspace_outlined, color: Colors.grey[600])
-              : Text(
-                  key,
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w600,
+          child:
+              isDelete
+                  ? Icon(Icons.backspace_outlined, color: Colors.grey[600])
+                  : Text(
+                    key,
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
         ),
       ),
     );

@@ -46,59 +46,60 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('历史记录'),
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
+      appBar: AppBar(title: const Text('历史记录')),
+      body:
+          _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
               ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.cloud_off, size: 48, color: Colors.grey[400]),
-                      const SizedBox(height: 16),
-                      Text('加载失败',
-                          style: TextStyle(color: Colors.grey[600], fontSize: 16)),
-                      const SizedBox(height: 8),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
-                        child: Text(
-                          _error!,
-                          style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      FilledButton.tonal(
-                        onPressed: _loadSessions,
-                        child: const Text('重试'),
-                      ),
-                    ],
-                  ),
-                )
-              : _sessions.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.history, size: 48, color: Colors.grey[400]),
-                          const SizedBox(height: 16),
-                          Text('暂无运动记录', style: TextStyle(color: Colors.grey[600])),
-                        ],
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _loadSessions,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _sessions.length,
-                        itemBuilder: (context, index) {
-                          final session = _sessions[index];
-                          return _buildSessionCard(session);
-                        },
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.cloud_off, size: 48, color: Colors.grey[400]),
+                    const SizedBox(height: 16),
+                    Text(
+                      '加载失败',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Text(
+                        _error!,
+                        style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                        textAlign: TextAlign.center,
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    FilledButton.tonal(
+                      onPressed: _loadSessions,
+                      child: const Text('重试'),
+                    ),
+                  ],
+                ),
+              )
+              : _sessions.isEmpty
+              ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.history, size: 48, color: Colors.grey[400]),
+                    const SizedBox(height: 16),
+                    Text('暂无运动记录', style: TextStyle(color: Colors.grey[600])),
+                  ],
+                ),
+              )
+              : RefreshIndicator(
+                onRefresh: _loadSessions,
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _sessions.length,
+                  itemBuilder: (context, index) {
+                    final session = _sessions[index];
+                    return _buildSessionCard(session);
+                  },
+                ),
+              ),
     );
   }
 
@@ -115,10 +116,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => SessionDetailScreen(
-                sessionId: sessionId,
-                startTime: startTime,
-              ),
+              builder:
+                  (_) => SessionDetailScreen(
+                    sessionId: sessionId,
+                    startTime: startTime,
+                  ),
             ),
           );
         },
@@ -218,50 +220,52 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('轨迹详情'),
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _points.isEmpty
+      appBar: AppBar(title: const Text('轨迹详情')),
+      body:
+          _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _points.isEmpty
               ? const Center(child: Text('暂无轨迹数据'))
               : Column(
-                  children: [
-                    Expanded(
-                      child: _buildMap(),
+                children: [
+                  Expanded(child: _buildMap()),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildInfoChip('轨迹点数', '${_points.length}'),
+                        _buildInfoChip(
+                          '会话ID',
+                          widget.sessionId.substring(0, 8),
+                        ),
+                      ],
                     ),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _buildInfoChip('轨迹点数', '${_points.length}'),
-                          _buildInfoChip('会话ID',
-                              widget.sessionId.substring(0, 8)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
     );
   }
 
   Widget _buildMap() {
-    final positions = _points
-        .map((p) => LatLng(
-              (p['latitude'] as num).toDouble(),
-              (p['longitude'] as num).toDouble(),
-            ))
-        .toList();
+    final positions =
+        _points
+            .map(
+              (p) => LatLng(
+                (p['latitude'] as num).toDouble(),
+                (p['longitude'] as num).toDouble(),
+              ),
+            )
+            .toList();
 
     if (positions.isEmpty) return const SizedBox();
 
     final avgLat =
         positions.map((p) => p.latitude).reduce((a, b) => a + b) /
-            positions.length;
+        positions.length;
     final avgLng =
         positions.map((p) => p.longitude).reduce((a, b) => a + b) /
-            positions.length;
+        positions.length;
 
     return FlutterMap(
       options: MapOptions(
@@ -278,11 +282,7 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
         if (positions.length >= 2)
           PolylineLayer(
             polylines: [
-              Polyline(
-                points: positions,
-                color: Colors.teal,
-                strokeWidth: 4,
-              ),
+              Polyline(points: positions, color: Colors.teal, strokeWidth: 4),
             ],
           ),
         if (positions.isNotEmpty)
@@ -292,8 +292,7 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
                 point: positions.first,
                 width: 30,
                 height: 30,
-                child:
-                    const Icon(Icons.place, color: Colors.green, size: 30),
+                child: const Icon(Icons.place, color: Colors.green, size: 30),
               ),
               Marker(
                 point: positions.last,
@@ -310,8 +309,10 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
   Widget _buildInfoChip(String label, String value) {
     return Column(
       children: [
-        Text(value,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
         Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
       ],
     );

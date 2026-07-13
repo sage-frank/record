@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 
+import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../models/diet_record.dart';
 import '../models/user_profile.dart';
@@ -35,14 +36,31 @@ class _DietScreenState extends State<DietScreen> {
 
   Future<void> _load() async {
     final storage = context.read<StorageService>();
-    final records = await storage.loadDietRecords();
-    final profile = await storage.loadProfile();
-    if (!mounted) return;
-    setState(() {
-      _records = records;
-      _profile = profile;
-      _loading = false;
-    });
+    final api = context.read<ApiService>();
+    try {
+      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final recordJsonList = await api.getDietRecords(date: today);
+      final records = recordJsonList.map(DietRecord.fromJson).toList();
+      final profileJson = await api.getProfile();
+      final profile = UserProfile.fromJson(profileJson);
+      await storage.saveDietRecords(records);
+      await storage.saveProfile(profile);
+      if (!mounted) return;
+      setState(() {
+        _records = records;
+        _profile = profile;
+        _loading = false;
+      });
+    } catch (_) {
+      final records = await storage.loadDietRecords();
+      final profile = await storage.loadProfile();
+      if (!mounted) return;
+      setState(() {
+        _records = records;
+        _profile = profile;
+        _loading = false;
+      });
+    }
   }
 
   double get _todayCalories {
@@ -61,10 +79,7 @@ class _DietScreenState extends State<DietScreen> {
     final remaining = goal - todayKcal.toInt();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('饮食记录'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('饮食记录'), centerTitle: true),
       body: Column(
         children: [
           // 今日卡路里概览
@@ -89,9 +104,8 @@ class _DietScreenState extends State<DietScreen> {
                     const SizedBox(height: 4),
                     Text(
                       '$todayKcal',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                      style: Theme.of(context).textTheme.headlineMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
                     ),
                     Text(
                       '目标 $goal kcal',
@@ -101,18 +115,25 @@ class _DietScreenState extends State<DietScreen> {
                 ),
                 const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
-                    color: remaining >= 0
-                        ? Colors.green.withValues(alpha: 0.2)
-                        : Colors.red.withValues(alpha: 0.2),
+                    color:
+                        remaining >= 0
+                            ? Colors.green.withValues(alpha: 0.2)
+                            : Colors.red.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    remaining >= 0 ? '还可 $remaining kcal' : '超出 ${-remaining} kcal',
+                    remaining >= 0
+                        ? '还可 $remaining kcal'
+                        : '超出 ${-remaining} kcal',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: remaining >= 0 ? Colors.green[800] : Colors.red[800],
+                      color:
+                          remaining >= 0 ? Colors.green[800] : Colors.red[800],
                     ),
                   ),
                 ),
@@ -122,24 +143,31 @@ class _DietScreenState extends State<DietScreen> {
 
           // 餐食分组
           Expanded(
-            child: _records.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+            child:
+                _records.isEmpty
+                    ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.restaurant,
+                            size: 48,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '暂无饮食记录',
+                            style: TextStyle(color: Colors.grey[500]),
+                          ),
+                        ],
+                      ),
+                    )
+                    : ListView(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       children: [
-                        Icon(Icons.restaurant, size: 48, color: Colors.grey[400]),
-                        const SizedBox(height: 12),
-                        Text('暂无饮食记录', style: TextStyle(color: Colors.grey[500])),
+                        for (final mt in _mealTypes) _buildMealGroup(mt),
                       ],
                     ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    children: [
-                      for (final mt in _mealTypes)
-                        _buildMealGroup(mt),
-                    ],
-                  ),
           ),
         ],
       ),
@@ -153,11 +181,14 @@ class _DietScreenState extends State<DietScreen> {
 
   Widget _buildMealGroup(String mealType) {
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    final items = _records
-        .where((r) =>
-            r.mealType == mealType &&
-            DateFormat('yyyy-MM-dd').format(r.date) == today)
-        .toList();
+    final items =
+        _records
+            .where(
+              (r) =>
+                  r.mealType == mealType &&
+                  DateFormat('yyyy-MM-dd').format(r.date) == today,
+            )
+            .toList();
 
     if (items.isEmpty) return const SizedBox.shrink();
 
@@ -210,7 +241,13 @@ class _DietScreenState extends State<DietScreen> {
   }
 
   Future<void> _deleteRecord(String id) async {
-    await context.read<StorageService>().deleteDietRecord(id);
+    final api = context.read<ApiService>();
+    final storage = context.read<StorageService>();
+    try {
+      await api.deleteDietRecord(id);
+    } catch (_) {
+      await storage.deleteDietRecord(id);
+    }
     await _load();
   }
 
@@ -225,87 +262,115 @@ class _DietScreenState extends State<DietScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            20,
-            20,
-            MediaQuery.of(ctx).viewInsets.bottom + 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('记录饮食', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
-              // 餐食类型选择
-              Row(
-                children: _mealTypes.map((mt) {
-                  final selected = mealType == mt;
-                  final label = mt == 'breakfast'
-                      ? '早餐'
-                      : mt == 'lunch'
-                          ? '午餐'
-                          : mt == 'dinner'
-                              ? '晚餐'
-                              : '加餐';
-                  return Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: ChoiceChip(
-                        label: Text(label, style: const TextStyle(fontSize: 12)),
-                        selected: selected,
-                        onSelected: (_) => setSheetState(() => mealType = mt),
+      builder:
+          (ctx) => StatefulBuilder(
+            builder:
+                (ctx, setSheetState) => Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    20,
+                    20,
+                    20,
+                    MediaQuery.of(ctx).viewInsets.bottom + 20,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '记录饮食',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(
-                  labelText: '食物名称',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: calCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: '卡路里 (kcal)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () async {
-                    final name = nameCtrl.text.trim();
-                    final cal = double.tryParse(calCtrl.text.trim());
-                    if (name.isEmpty || cal == null) return;
+                      const SizedBox(height: 16),
+                      // 餐食类型选择
+                      Row(
+                        children:
+                            _mealTypes.map((mt) {
+                              final selected = mealType == mt;
+                              final label =
+                                  mt == 'breakfast'
+                                      ? '早餐'
+                                      : mt == 'lunch'
+                                      ? '午餐'
+                                      : mt == 'dinner'
+                                      ? '晚餐'
+                                      : '加餐';
+                              return Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 3,
+                                  ),
+                                  child: ChoiceChip(
+                                    label: Text(
+                                      label,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    selected: selected,
+                                    onSelected:
+                                        (_) =>
+                                            setSheetState(() => mealType = mt),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: nameCtrl,
+                        decoration: const InputDecoration(
+                          labelText: '食物名称',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: calCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: '卡路里 (kcal)',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () async {
+                            final api = context.read<ApiService>();
+                            final storage = context.read<StorageService>();
+                            final messenger = ScaffoldMessenger.of(context);
+                            final name = nameCtrl.text.trim();
+                            final cal = double.tryParse(calCtrl.text.trim());
+                            if (name.isEmpty || cal == null) return;
 
-                    final record = DietRecord(
-                      id: const Uuid().v4(),
-                      date: DateTime.now(),
-                      mealType: mealType,
-                      foodName: name,
-                      calories: cal,
-                    );
-                    await context.read<StorageService>().addDietRecord(record);
-                    Navigator.pop(ctx);
-                    await _load();
-                  },
-                  child: const Text('保存'),
+                            final record = DietRecord(
+                              id: const Uuid().v4(),
+                              date: DateTime.now(),
+                              mealType: mealType,
+                              foodName: name,
+                              calories: cal,
+                            );
+                            try {
+                              await api.addDietRecord(record.toApiJson());
+                              await storage.addDietRecord(record);
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              await _load();
+                            } catch (e) {
+                              if (!mounted) return;
+                              messenger.showSnackBar(
+                                SnackBar(content: Text('保存失败: $e')),
+                              );
+                            }
+                          },
+                          child: const Text('保存'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
           ),
-        ),
-      ),
     );
   }
 }

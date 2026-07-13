@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../models/user_profile.dart';
 
@@ -24,15 +25,60 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadData() async {
     final storage = context.read<StorageService>();
-    final profile = await storage.loadProfile();
-    final calories = await storage.getTodayCalories();
-    final history = await storage.loadWeightHistory();
-    if (!mounted) return;
-    setState(() {
-      _profile = profile;
-      _todayCalories = calories;
-      _weightHistory = history;
-    });
+    final api = context.read<ApiService>();
+    try {
+      final profileJson = await api.getProfile();
+      final profile = UserProfile.fromJson(profileJson);
+
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+      final dietRecords = await api.getDietRecords(date: today);
+      final calories = dietRecords.fold<double>(
+        0,
+        (sum, r) => sum + (r['calories'] as num).toDouble(),
+      );
+
+      final weightHistory = await api.getWeightHistory();
+      final mappedHistory =
+          weightHistory
+              .map(
+                (r) => {
+                  'id': r['id'],
+                  'weight': (r['weight_kg'] as num).toDouble(),
+                  'date': r['recorded_at'],
+                },
+              )
+              .toList();
+
+      await storage.saveProfile(profile);
+      if (!mounted) return;
+      setState(() {
+        _profile = profile;
+        _todayCalories = calories;
+        _weightHistory = mappedHistory;
+      });
+    } catch (_) {
+      final profile = await storage.loadProfile();
+      final calories = await storage.getTodayCalories();
+      final history = await storage.loadWeightHistory();
+      if (!mounted) return;
+      setState(() {
+        _profile = profile;
+        _todayCalories = calories;
+        _weightHistory = history;
+      });
+    }
+  }
+
+  Future<void> _deleteWeightRecord(int id) async {
+    try {
+      await context.read<ApiService>().deleteWeightRecord(id);
+      await _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
+    }
   }
 
   @override
@@ -41,10 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (p == null) return const Center(child: CircularProgressIndicator());
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('减重助手'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('减重助手'), centerTitle: true),
       body: RefreshIndicator(
         onRefresh: _loadData,
         child: ListView(
@@ -69,7 +112,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _greeting(UserProfile p) {
     final hour = DateTime.now().hour;
-    final greeting = hour < 12 ? '早上好' : hour < 18 ? '下午好' : '晚上好';
+    final greeting =
+        hour < 12
+            ? '早上好'
+            : hour < 18
+            ? '下午好'
+            : '晚上好';
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -181,7 +229,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         : '已超出 ${-remaining} kcal',
                     style: TextStyle(
                       fontSize: 13,
-                      color: remaining > 0 ? Colors.green[700] : Colors.red[700],
+                      color:
+                          remaining > 0 ? Colors.green[700] : Colors.red[700],
                     ),
                   ),
                 ],
@@ -197,7 +246,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return Row(
       children: [
         Expanded(
-          child: _statCard('基础代谢', '${p.bmr}', 'kcal/天', Icons.local_fire_department),
+          child: _statCard(
+            '基础代谢',
+            '${p.bmr}',
+            'kcal/天',
+            Icons.local_fire_department,
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -235,7 +289,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             Text(unit, style: TextStyle(fontSize: 11, color: Colors.grey[500])),
             const SizedBox(height: 4),
-            Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+            Text(
+              label,
+              style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+            ),
           ],
         ),
       ),
@@ -245,73 +302,121 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _weightTrend() {
     if (_weightHistory.length < 2) {
       return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              const Icon(Icons.show_chart, size: 40, color: Colors.grey),
-              const SizedBox(height: 8),
-              Text(
-                '记录体重后这里将显示趋势图',
-                style: TextStyle(color: Colors.grey[500]),
-              ),
-            ],
+        child: InkWell(
+          onTap:
+              _weightHistory.isEmpty ? null : () => _showWeightHistorySheet(),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                const Icon(Icons.show_chart, size: 40, color: Colors.grey),
+                const SizedBox(height: 8),
+                Text(
+                  _weightHistory.isEmpty ? '记录体重后这里将显示趋势图' : '点击查看体重记录',
+                  style: TextStyle(color: Colors.grey[500]),
+                ),
+              ],
+            ),
           ),
         ),
       );
     }
 
     // 取最近 14 条
-    final data = _weightHistory.length > 14
-        ? _weightHistory.sublist(_weightHistory.length - 14)
-        : _weightHistory;
-    final minWeight = data.map((e) => e['weight'] as double).reduce(
-          (a, b) => a < b ? a : b,
-        );
-    final maxWeight = data.map((e) => e['weight'] as double).reduce(
-          (a, b) => a > b ? a : b,
-        );
+    final data =
+        _weightHistory.length > 14
+            ? _weightHistory.sublist(_weightHistory.length - 14)
+            : _weightHistory;
+    final minWeight = data
+        .map((e) => e['weight'] as double)
+        .reduce((a, b) => a < b ? a : b);
+    final maxWeight = data
+        .map((e) => e['weight'] as double)
+        .reduce((a, b) => a > b ? a : b);
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '体重趋势',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 140,
-              child: CustomPaint(
-                size: const Size(double.infinity, 140),
-                painter: _WeightChartPainter(
-                  data: data,
-                  minWeight: minWeight - 1,
-                  maxWeight: maxWeight + 1,
-                  color: Theme.of(context).colorScheme.primary,
+      child: InkWell(
+        onTap: _showWeightHistorySheet,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '体重趋势',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 140,
+                child: CustomPaint(
+                  size: const Size(double.infinity, 140),
+                  painter: _WeightChartPainter(
+                    data: data,
+                    minWeight: minWeight - 1,
+                    maxWeight: maxWeight + 1,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '${maxWeight.toStringAsFixed(1)} kg',
-                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                ),
-                Text(
-                  '${minWeight.toStringAsFixed(1)} kg',
-                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                ),
-              ],
-            ),
-          ],
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${maxWeight.toStringAsFixed(1)} kg',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  ),
+                  Text(
+                    '${minWeight.toStringAsFixed(1)} kg',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  void _showWeightHistorySheet() {
+    final items = [..._weightHistory].reversed.toList();
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder:
+          (ctx) => ListView.builder(
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final id = item['id'];
+              final date = item['date'] as String?;
+              final weight = item['weight'] as double;
+              return Dismissible(
+                key: ValueKey(id ?? '$index-$date-$weight'),
+                direction:
+                    id == null
+                        ? DismissDirection.none
+                        : DismissDirection.endToStart,
+                background: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 20),
+                  color: Colors.red,
+                  child: const Icon(Icons.delete, color: Colors.white),
+                ),
+                onDismissed: (_) {
+                  if (id is int) {
+                    _deleteWeightRecord(id);
+                  }
+                },
+                child: ListTile(
+                  title: Text('${weight.toStringAsFixed(1)} kg'),
+                  subtitle: Text(date ?? '--'),
+                ),
+              );
+            },
+          ),
     );
   }
 }
@@ -333,18 +438,23 @@ class _WeightChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (data.length < 2) return;
 
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
+    final paint =
+        Paint()
+          ..color = color
+          ..strokeWidth = 2.5
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round;
 
-    final fillPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [color.withValues(alpha: 0.3), color.withValues(alpha: 0.0)],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+    final fillPaint =
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              color.withValues(alpha: 0.3),
+              color.withValues(alpha: 0.0),
+            ],
+          ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
 
     final path = Path();
     final fillPath = Path();

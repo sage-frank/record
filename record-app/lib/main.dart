@@ -5,7 +5,6 @@ import 'services/api_service.dart';
 import 'services/location_service.dart';
 import 'services/storage_service.dart';
 import 'screens/login_screen.dart';
-import 'screens/main_shell.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();

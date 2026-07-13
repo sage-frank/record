@@ -19,25 +19,30 @@ class ApiService {
     required List<Map<String, dynamic>> points,
   }) async {
     final url = '$baseUrl/track-points/batch';
-    final body = jsonEncode({
-      'session_id': sessionId,
-      'points': points,
-    });
+    final body = jsonEncode({'session_id': sessionId, 'points': points});
     _log('POST $url session=$sessionId points=${points.length}');
 
     try {
       final response = await http
-          .post(Uri.parse(url), headers: {'Content-Type': 'application/json'}, body: body)
+          .post(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+            body: body,
+          )
           .timeout(_timeout);
 
-      _log('响应: HTTP ${response.statusCode} body=${response.body.length > 200 ? "${response.body.substring(0, 200)}..." : response.body}');
+      _log(
+        '响应: HTTP ${response.statusCode} body=${response.body.length > 200 ? "${response.body.substring(0, 200)}..." : response.body}',
+      );
 
       if (response.statusCode == 200) {
         _log('上传成功');
         return jsonDecode(response.body);
       } else {
         _log('上传失败 HTTP ${response.statusCode}: ${response.body}');
-        throw Exception('上传失败: HTTP ${response.statusCode}, 响应: ${response.body}');
+        throw Exception(
+          '上传失败: HTTP ${response.statusCode}, 响应: ${response.body}',
+        );
       }
     } on SocketException catch (e) {
       _log('Socket 异常: $e');
@@ -62,7 +67,9 @@ class ApiService {
         final data = jsonDecode(response.body);
         return List<Map<String, dynamic>>.from(data['sessions']);
       } else {
-        throw Exception('获取会话列表失败: HTTP ${response.statusCode}, 响应: ${response.body}');
+        throw Exception(
+          '获取会话列表失败: HTTP ${response.statusCode}, 响应: ${response.body}',
+        );
       }
     } on SocketException catch (e) {
       _log('Socket 异常: $e');
@@ -83,7 +90,9 @@ class ApiService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        throw Exception('获取轨迹点失败: HTTP ${response.statusCode}, 响应: ${response.body}');
+        throw Exception(
+          '获取轨迹点失败: HTTP ${response.statusCode}, 响应: ${response.body}',
+        );
       }
     } on SocketException catch (e) {
       _log('Socket 异常: $e');
@@ -104,7 +113,9 @@ class ApiService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        throw Exception('获取统计失败: HTTP ${response.statusCode}, 响应: ${response.body}');
+        throw Exception(
+          '获取统计失败: HTTP ${response.statusCode}, 响应: ${response.body}',
+        );
       }
     } on SocketException catch (e) {
       _log('Socket 异常: $e');
@@ -146,9 +157,13 @@ class ApiService {
   Future<void> updateProfile(Map<String, dynamic> profile) async {
     final url = '$baseUrl/profile';
     _log('PUT $url');
-    final response = await http.put(Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(profile)).timeout(_timeout);
+    final response = await http
+        .put(
+          Uri.parse(url),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(profile),
+        )
+        .timeout(_timeout);
     if (response.statusCode != 200) throw Exception('更新档案失败');
   }
 
@@ -166,9 +181,25 @@ class ApiService {
   /// 添加体重记录
   Future<void> addWeightRecord(double weightKg) async {
     final url = '$baseUrl/weight-history';
-    await http.post(Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'weight_kg': weightKg})).timeout(_timeout);
+    final response = await http
+        .post(
+          Uri.parse(url),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'weight_kg': weightKg}),
+        )
+        .timeout(_timeout);
+    if (response.statusCode != 200) {
+      throw Exception('添加体重记录失败: HTTP ${response.statusCode}');
+    }
+  }
+
+  /// 删除体重记录
+  Future<void> deleteWeightRecord(int id) async {
+    final url = '$baseUrl/weight-history/$id';
+    final response = await http.delete(Uri.parse(url)).timeout(_timeout);
+    if (response.statusCode != 200) {
+      throw Exception('删除体重记录失败: HTTP ${response.statusCode}');
+    }
   }
 
   /// 获取饮食记录
@@ -186,9 +217,13 @@ class ApiService {
   /// 添加饮食记录
   Future<void> addDietRecord(Map<String, dynamic> record) async {
     final url = '$baseUrl/diet-records';
-    await http.post(Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(record)).timeout(_timeout);
+    await http
+        .post(
+          Uri.parse(url),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(record),
+        )
+        .timeout(_timeout);
   }
 
   /// 删除饮食记录
@@ -211,17 +246,25 @@ class ApiService {
   /// 添加运动计划
   Future<void> addPlan(Map<String, dynamic> plan) async {
     final url = '$baseUrl/plans';
-    await http.post(Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(plan)).timeout(_timeout);
+    await http
+        .post(
+          Uri.parse(url),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(plan),
+        )
+        .timeout(_timeout);
   }
 
   /// 更新运动计划
   Future<void> updatePlan(String id, Map<String, dynamic> plan) async {
     final url = '$baseUrl/plans/$id';
-    await http.put(Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(plan)).timeout(_timeout);
+    await http
+        .put(
+          Uri.parse(url),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(plan),
+        )
+        .timeout(_timeout);
   }
 
   /// 删除运动计划

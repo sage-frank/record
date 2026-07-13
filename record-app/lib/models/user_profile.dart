@@ -32,10 +32,7 @@ class UserProfile {
   double get weightProgress =>
       currentWeightKg <= targetWeightKg
           ? 1.0
-          : (weightToLose / (currentWeightKg - targetWeightKg + 1)).clamp(
-            0,
-            1,
-          );
+          : (weightToLose / (currentWeightKg - targetWeightKg + 1)).clamp(0, 1);
 
   Map<String, dynamic> toJson() => {
     'name': name,
@@ -48,16 +45,40 @@ class UserProfile {
     'updatedAt': updatedAt.toIso8601String(),
   };
 
+  Map<String, dynamic> toApiJson() => {
+    'name': name,
+    'current_weight_kg': currentWeightKg,
+    'target_weight_kg': targetWeightKg,
+    'height_cm': heightCm,
+    'age': age,
+    'gender': gender,
+    'daily_calorie_goal': dailyCalorieGoal,
+    'updated_at': updatedAt.toIso8601String(),
+  };
+
   factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
     name: json['name'] as String? ?? '',
-    currentWeightKg: (json['currentWeightKg'] as num?)?.toDouble() ?? 70,
-    targetWeightKg: (json['targetWeightKg'] as num?)?.toDouble() ?? 60,
-    heightCm: (json['heightCm'] as num?)?.toDouble() ?? 170,
-    age: json['age'] as int? ?? 30,
+    currentWeightKg:
+        ((json['currentWeightKg'] ?? json['current_weight_kg']) as num?)
+            ?.toDouble() ??
+        70,
+    targetWeightKg:
+        ((json['targetWeightKg'] ?? json['target_weight_kg']) as num?)
+            ?.toDouble() ??
+        60,
+    heightCm:
+        ((json['heightCm'] ?? json['height_cm']) as num?)?.toDouble() ?? 170,
+    age: (json['age'] as num?)?.toInt() ?? 30,
     gender: json['gender'] as String? ?? 'male',
-    dailyCalorieGoal: json['dailyCalorieGoal'] as int? ?? 2000,
-    updatedAt: json['updatedAt'] != null
-        ? DateTime.parse(json['updatedAt'] as String)
-        : DateTime.now(),
+    dailyCalorieGoal:
+        ((json['dailyCalorieGoal'] ?? json['daily_calorie_goal']) as num?)
+            ?.toInt() ??
+        2000,
+    updatedAt:
+        (json['updatedAt'] ?? json['updated_at']) != null
+            ? DateTime.parse(
+              (json['updatedAt'] ?? json['updated_at']) as String,
+            )
+            : DateTime.now(),
   );
 }
