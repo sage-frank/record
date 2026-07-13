@@ -103,9 +103,13 @@ class StorageService {
   Future<double> getTodayCalories() async {
     final records = await loadDietRecords();
     final today = DateTime.now().toIso8601String().substring(0, 10);
-    return records
-        .where((r) => r.date.toIso8601String().startsWith(today))
-        .fold(0.0, (sum, r) => sum + r.calories);
+    final filtered = records
+        .where((r) => r.date.toIso8601String().startsWith(today));
+    double total = 0.0;
+    for (final r in filtered) {
+      total += r.calories;
+    }
+    return total;
   }
 
   // ─── Exercise Plans ────────────────────────────────

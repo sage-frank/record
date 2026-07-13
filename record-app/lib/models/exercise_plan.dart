@@ -10,7 +10,7 @@ class ExercisePlan {
   final bool isActive;
   final DateTime createdAt;
 
-  const ExercisePlan({
+  ExercisePlan({
     required this.id,
     required this.name,
     this.description = '',
