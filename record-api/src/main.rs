@@ -3,7 +3,7 @@ mod handlers;
 mod models;
 
 use axum::{
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 use std::sync::Arc;
@@ -47,6 +47,20 @@ async fn main() {
         .route("/api/track-points", post(add_track_point))
         .route("/api/track-points/batch", post(add_track_points_batch))
         .nest("/api/sessions", sessions_routes)
+        // 减重模块
+        .route("/api/profile", get(get_profile).put(update_profile))
+        .route(
+            "/api/weight-history",
+            get(get_weight_history).post(add_weight_record),
+        )
+        .route("/api/weight-history/{id}", delete(delete_weight_record))
+        .route(
+            "/api/diet-records",
+            get(get_diet_records).post(add_diet_record),
+        )
+        .route("/api/diet-records/{id}", delete(delete_diet_record))
+        .route("/api/plans", get(get_plans).post(add_plan))
+        .route("/api/plans/{id}", put(update_plan).delete(delete_plan))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);

@@ -130,4 +130,103 @@ class ApiService {
       throw Exception('无法连接服务器: ${e.message}');
     }
   }
+
+  // ── 减重模块 ──────────────────────────────────
+
+  /// 获取用户档案
+  Future<Map<String, dynamic>> getProfile() async {
+    final url = '$baseUrl/profile';
+    _log('GET $url');
+    final response = await http.get(Uri.parse(url)).timeout(_timeout);
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception('获取档案失败');
+  }
+
+  /// 更新用户档案
+  Future<void> updateProfile(Map<String, dynamic> profile) async {
+    final url = '$baseUrl/profile';
+    _log('PUT $url');
+    final response = await http.put(Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(profile)).timeout(_timeout);
+    if (response.statusCode != 200) throw Exception('更新档案失败');
+  }
+
+  /// 获取体重历史
+  Future<List<Map<String, dynamic>>> getWeightHistory() async {
+    final url = '$baseUrl/weight-history';
+    final response = await http.get(Uri.parse(url)).timeout(_timeout);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return List<Map<String, dynamic>>.from(data['records']);
+    }
+    throw Exception('获取体重历史失败');
+  }
+
+  /// 添加体重记录
+  Future<void> addWeightRecord(double weightKg) async {
+    final url = '$baseUrl/weight-history';
+    await http.post(Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'weight_kg': weightKg})).timeout(_timeout);
+  }
+
+  /// 获取饮食记录
+  Future<List<Map<String, dynamic>>> getDietRecords({String? date}) async {
+    var url = '$baseUrl/diet-records';
+    if (date != null) url += '?date=$date';
+    final response = await http.get(Uri.parse(url)).timeout(_timeout);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return List<Map<String, dynamic>>.from(data['records']);
+    }
+    throw Exception('获取饮食记录失败');
+  }
+
+  /// 添加饮食记录
+  Future<void> addDietRecord(Map<String, dynamic> record) async {
+    final url = '$baseUrl/diet-records';
+    await http.post(Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(record)).timeout(_timeout);
+  }
+
+  /// 删除饮食记录
+  Future<void> deleteDietRecord(String id) async {
+    final url = '$baseUrl/diet-records/$id';
+    await http.delete(Uri.parse(url)).timeout(_timeout);
+  }
+
+  /// 获取运动计划
+  Future<List<Map<String, dynamic>>> getPlans() async {
+    final url = '$baseUrl/plans';
+    final response = await http.get(Uri.parse(url)).timeout(_timeout);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return List<Map<String, dynamic>>.from(data['plans']);
+    }
+    throw Exception('获取计划失败');
+  }
+
+  /// 添加运动计划
+  Future<void> addPlan(Map<String, dynamic> plan) async {
+    final url = '$baseUrl/plans';
+    await http.post(Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(plan)).timeout(_timeout);
+  }
+
+  /// 更新运动计划
+  Future<void> updatePlan(String id, Map<String, dynamic> plan) async {
+    final url = '$baseUrl/plans/$id';
+    await http.put(Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(plan)).timeout(_timeout);
+  }
+
+  /// 删除运动计划
+  Future<void> deletePlan(String id) async {
+    final url = '$baseUrl/plans/$id';
+    await http.delete(Uri.parse(url)).timeout(_timeout);
+  }
 }
