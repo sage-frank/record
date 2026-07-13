@@ -1,5 +1,6 @@
 # Rust
 record-api/target/
+record-api/*.db
 
 # Flutter
 record-app/build/

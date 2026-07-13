@@ -67,6 +67,7 @@ interface SessionStats {
   last_timestamp: string;
 }
 
+
 function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);

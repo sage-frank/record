@@ -5,9 +5,11 @@ import 'services/api_service.dart';
 import 'services/location_service.dart';
 import 'screens/home_screen.dart';
 
+
 void main() {
   runApp(const RecordApp());
 }
+
 
 class RecordApp extends StatelessWidget {
   const RecordApp({super.key});

@@ -32,6 +32,7 @@ track_points 表:
 | POST | /api/track-points/batch | 批量上报位置点 |
 | GET | /api/sessions | 获取所有运动会话列表 |
 | GET | /api/sessions/:id/track-points | 获取某次会话的所有轨迹点 |
+| GET | /api/sessions/:id/stats | 获取会话实时统计 |
 | DELETE | /api/sessions/:id | 删除一次运动记录 |
 
 ## 技术架构

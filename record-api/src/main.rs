@@ -3,7 +3,7 @@ mod handlers;
 mod models;
 
 use axum::{
-    routing::{delete, get},
+    routing::{delete, get, post},
     Router,
 };
 use std::sync::Arc;
@@ -44,11 +44,8 @@ async fn main() {
         .with_state(state.clone());
 
     let app = Router::new()
-        .route("/api/track-points", axum::routing::post(add_track_point))
-        .route(
-            "/api/track-points/batch",
-            axum::routing::post(add_track_points_batch),
-        )
+        .route("/api/track-points", post(add_track_point))
+        .route("/api/track-points/batch", post(add_track_points_batch))
         .nest("/api/sessions", sessions_routes)
         .layer(cors)
         .layer(TraceLayer::new_for_http())

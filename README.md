@@ -66,7 +66,7 @@ track_points (
 ```bash
 cd record-api
 cargo run --release
-# 服务启动在 http://0.0.0.0:3000
+# 服务启动在 http://0.0.0.0:3001
 ```
 
 ### 2. 启动 Web 管理后台
@@ -107,7 +107,7 @@ nohup cargo run --release &
 ## 技术栈详情
 
 ### record-api
-- Web 框架: Axum 0.7
+- Web 框架: Axum 0.8
 - 数据库: SQLite (rusqlite, bundled)
 - 序列化: serde + serde_json
 - 跨域: tower-http cors
