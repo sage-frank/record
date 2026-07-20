@@ -21,6 +21,14 @@ dependencies:
   shared_preferences: ^2.3.0
   fl_chart: ^0.69.0
   intl: ^0.19.0
+  
+  # UI美化依赖
+  google_fonts: ^6.1.0
+  backdrop_filter: ^2.0.0
+  flutter_staggered_animations: ^1.1.1
+  shimmer: ^3.0.0
+  lottie: ^2.7.0
+  flutter_icons: ^1.1.0
 
 dev_dependencies:
   flutter_test:
@@ -29,3 +37,20 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  
+  # 应用资源
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/animations/
+    
+  fonts:
+    - family: PingFang
+      fonts:
+        - asset: assets/fonts/PingFangSC-Regular.ttf
+        - asset: assets/fonts/PingFangSC-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/PingFangSC-Semibold.ttf
+          weight: 600
+        - asset: assets/fonts/PingFangSC-Bold.ttf
+          weight: 700

@@ -5,6 +5,7 @@ import 'services/api_service.dart';
 import 'services/location_service.dart';
 import 'services/storage_service.dart';
 import 'screens/login_screen.dart';
+import 'theme/app_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,11 +26,7 @@ class RecordApp extends StatelessWidget {
       child: MaterialApp(
         title: '减重助手',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorSchemeSeed: const Color(0xFF2E7D5B),
-          useMaterial3: true,
-          brightness: Brightness.light,
-        ),
+        theme: AppTheme.lightTheme,
         home: const AuthGate(),
       ),
     );
