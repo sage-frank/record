@@ -248,11 +248,15 @@ class ApiService {
     _log('GET $url');
     try {
       final data = await _signedRequest(
-        method: 'GET',
-        url: url,
-        expectsList: true,
-      );
-      return List<Map<String, dynamic>>.from(data['records']);
+      _log('响应: HTTP ${response.statusCode}');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(data['sessions']);
+      } else {
+        throw Exception(
+          '获取会话列表失败: HTTP ${response.statusCode}, 响应: ${response.body}',
+        );
+      }
     } on SocketException catch (e) {
       _log('Socket 异常: $e');
       throw Exception('无法连接服务器: ${e.message}');
