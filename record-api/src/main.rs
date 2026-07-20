@@ -47,7 +47,7 @@ async fn main() {
         .route("/{id}", delete(delete_session))
         .route("/{id}/track-points", get(get_session_track_points))
         .route("/{id}/stats", get(get_session_stats))
-        .with_state((signature_state.clone(), db_state.clone()));
+        .with_state(db_state.clone());
 
     // 统一结构化请求日志
     let trace_layer = TraceLayer::new_for_http()
@@ -95,10 +95,10 @@ async fn main() {
         .route("/api/plans", get(get_plans).post(add_plan))
         .route("/api/plans/{id}", put(update_plan).delete(delete_plan))
         // 签名验证中间件 - 保护所有API路由
-        // .layer(axum::middleware::from_fn_with_state(signature_state.clone(), signature_middleware))
+        .layer(axum::middleware::from_fn_with_state(signature_state.clone(), signature_middleware))
         .layer(cors)
         .layer(trace_layer)
-        .with_state((signature_state, db_state));
+        .with_state(db_state);
 
     let addr = "0.0.0.0:3001";
     info!("Server running at http://{addr}");

@@ -2,6 +2,7 @@ use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
+    middleware::Next,
 };
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
@@ -134,13 +135,13 @@ pub async fn signature_middleware(
     State(signature_state): State<SignatureState>,
     headers: HeaderMap,
     req: axum::extract::Request,
-    next: axum::extract::Request,
+    next: axum::middleware::Next,
 ) -> Result<Response, SignatureError> {
     let path = req.uri().path();
     
     // Skip signature verification for debug endpoints and health checks
     if path.starts_with("/debug") || path == "/" {
-        return Ok(next.into_response());
+        return Ok(next.run(req).await);
     }
 
     // 提取签名头
@@ -200,5 +201,5 @@ pub async fn signature_middleware(
     }
 
     // 签名验证通过，继续处理请求
-    Ok(next.into_response())
+    Ok(next.run(req).await)
 }
