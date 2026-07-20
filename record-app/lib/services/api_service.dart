@@ -6,11 +6,13 @@ import 'package:http/http.dart' as http;
 
 class ApiService {
   // 远程服务器地址
-  static const String baseUrl = 'http://39.105.113.213:3001/api';
+  static const String baseUrl = 'https://39.105.113.213:3000/api';
   static const String _debugServerUrl = String.fromEnvironment(
     'DEBUG_SERVER_URL',
     defaultValue: '',
   );
+
+  
   static const String _debugSessionId = String.fromEnvironment(
     'DEBUG_SESSION_ID',
     defaultValue: 'api-calls-not-visible',
