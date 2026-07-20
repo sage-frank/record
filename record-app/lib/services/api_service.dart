@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart' as http_io;
 
 class ApiService {
   // 远程服务器地址
@@ -12,13 +13,13 @@ class ApiService {
   // 创建支持自签名证书的 HTTP 客户端
   static http.Client _getHttpClient() {
     if (_customClient != null) return _customClient!;
-    
+
+    // 创建一个信任所有证书的 HttpClient
     final client = HttpClient();
-    client.badCertificateCallback = (X509Certificate cert, String host, int port) {
-      // 允许自签名证书
-      return true;
-    };
-    _customClient = http.IOClient(client);
+    client.badCertificateCallback = (cert, host, port) => true;
+    
+    // 使用 IOClient 来包装我们的 HttpClient
+    _customClient = http_io.IOClient(client);
     return _customClient!;
   }
   static const String _debugServerUrl = String.fromEnvironment(
@@ -617,3 +618,5 @@ class ApiService {
     }
   }
 }
+
+
