@@ -7,12 +7,25 @@ import 'package:http/http.dart' as http;
 class ApiService {
   // 远程服务器地址
   static const String baseUrl = 'https://39.105.113.213:3000/api';
+  static http.Client? _customClient;
+
+  // 创建支持自签名证书的 HTTP 客户端
+  static http.Client _getHttpClient() {
+    if (_customClient != null) return _customClient!;
+    
+    final client = HttpClient();
+    client.badCertificateCallback = (X509Certificate cert, String host, int port) {
+      // 允许自签名证书
+      return true;
+    };
+    _customClient = http.IOClient(client);
+    return _customClient!;
+  }
   static const String _debugServerUrl = String.fromEnvironment(
     'DEBUG_SERVER_URL',
     defaultValue: '',
   );
 
-  
   static const String _debugSessionId = String.fromEnvironment(
     'DEBUG_SESSION_ID',
     defaultValue: 'api-calls-not-visible',
@@ -64,7 +77,7 @@ class ApiService {
     _log('POST $url session=$sessionId points=${points.length}');
 
     try {
-      final response = await http
+      final response = await _getHttpClient()
           .post(
             Uri.parse(url),
             headers: {'Content-Type': 'application/json'},
@@ -102,7 +115,7 @@ class ApiService {
     final url = '$baseUrl/sessions';
     _log('GET $url');
     try {
-      final response = await http.get(Uri.parse(url)).timeout(_timeout);
+      final response = await _getHttpClient().get(Uri.parse(url)).timeout(_timeout);
       _log('响应: HTTP ${response.statusCode}');
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -126,7 +139,7 @@ class ApiService {
     final url = '$baseUrl/sessions/$sessionId/track-points';
     _log('GET $url');
     try {
-      final response = await http.get(Uri.parse(url)).timeout(_timeout);
+      final response = await _getHttpClient().get(Uri.parse(url)).timeout(_timeout);
       _log('响应: HTTP ${response.statusCode}');
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -149,7 +162,7 @@ class ApiService {
     final url = '$baseUrl/sessions/$sessionId/stats';
     _log('GET $url');
     try {
-      final response = await http.get(Uri.parse(url)).timeout(_timeout);
+      final response = await _getHttpClient().get(Uri.parse(url)).timeout(_timeout);
       _log('响应: HTTP ${response.statusCode}');
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -172,7 +185,7 @@ class ApiService {
     final url = '$baseUrl/sessions/$sessionId';
     _log('DELETE $url');
     try {
-      final response = await http.delete(Uri.parse(url)).timeout(_timeout);
+      final response = await _getHttpClient().delete(Uri.parse(url)).timeout(_timeout);
       _log('响应: HTTP ${response.statusCode}');
       if (response.statusCode != 200) {
         throw Exception('删除失败: HTTP ${response.statusCode}');
@@ -189,7 +202,7 @@ class ApiService {
   Future<Map<String, dynamic>> getProfile() async {
     final url = '$baseUrl/profile';
     _log('GET $url');
-    final response = await http.get(Uri.parse(url)).timeout(_timeout);
+    final response = await _getHttpClient().get(Uri.parse(url)).timeout(_timeout);
     if (response.statusCode == 200) return jsonDecode(response.body);
     throw Exception('获取档案失败');
   }
@@ -206,7 +219,7 @@ class ApiService {
       ),
     );
     try {
-      final response = await http
+      final response = await _getHttpClient()
           .put(
             Uri.parse(url),
             headers: {'Content-Type': 'application/json'},
@@ -244,7 +257,7 @@ class ApiService {
       ),
     );
     try {
-      final response = await http.get(Uri.parse(url)).timeout(_timeout);
+      final response = await _getHttpClient().get(Uri.parse(url)).timeout(_timeout);
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
@@ -280,7 +293,7 @@ class ApiService {
       ),
     );
     try {
-      final response = await http
+      final response = await _getHttpClient()
           .post(
             Uri.parse(url),
             headers: {'Content-Type': 'application/json'},
@@ -320,7 +333,7 @@ class ApiService {
       ),
     );
     try {
-      final response = await http.delete(Uri.parse(url)).timeout(_timeout);
+      final response = await _getHttpClient().delete(Uri.parse(url)).timeout(_timeout);
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
@@ -355,7 +368,7 @@ class ApiService {
       ),
     );
     try {
-      final response = await http.get(Uri.parse(url)).timeout(_timeout);
+      final response = await _getHttpClient().get(Uri.parse(url)).timeout(_timeout);
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
@@ -391,7 +404,7 @@ class ApiService {
       ),
     );
     try {
-      final response = await http
+      final response = await _getHttpClient()
           .post(
             Uri.parse(url),
             headers: {'Content-Type': 'application/json'},
@@ -431,7 +444,7 @@ class ApiService {
       ),
     );
     try {
-      final response = await http.delete(Uri.parse(url)).timeout(_timeout);
+      final response = await _getHttpClient().delete(Uri.parse(url)).timeout(_timeout);
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
@@ -465,7 +478,7 @@ class ApiService {
       ),
     );
     try {
-      final response = await http.get(Uri.parse(url)).timeout(_timeout);
+      final response = await _getHttpClient().get(Uri.parse(url)).timeout(_timeout);
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
@@ -501,7 +514,7 @@ class ApiService {
       ),
     );
     try {
-      final response = await http
+      final response = await _getHttpClient()
           .post(
             Uri.parse(url),
             headers: {'Content-Type': 'application/json'},
@@ -541,7 +554,7 @@ class ApiService {
       ),
     );
     try {
-      final response = await http
+      final response = await _getHttpClient()
           .put(
             Uri.parse(url),
             headers: {'Content-Type': 'application/json'},
@@ -581,7 +594,7 @@ class ApiService {
       ),
     );
     try {
-      final response = await http.delete(Uri.parse(url)).timeout(_timeout);
+      final response = await _getHttpClient().delete(Uri.parse(url)).timeout(_timeout);
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
