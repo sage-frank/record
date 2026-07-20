@@ -28,6 +28,13 @@ class UserProfile {
     return (10 * currentWeightKg + 6.25 * heightCm - 5 * age + 5).round();
   }
 
+  /// 从更新日起的天数
+  int get daysSinceStart {
+    final now = DateTime.now();
+    final difference = now.difference(updatedAt).inDays;
+    return difference + 1; // 至少为1天
+  }
+
   double get weightToLose => (currentWeightKg - targetWeightKg).clamp(0, 999);
   double get weightProgress =>
       currentWeightKg <= targetWeightKg

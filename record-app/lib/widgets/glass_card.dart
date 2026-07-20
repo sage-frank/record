@@ -250,7 +250,7 @@ class StatsCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (unit != null) ..[
+              if (unit != null) ...[
                 const SizedBox(width: 4),
                 Text(
                   unit!,
@@ -258,7 +258,7 @@ class StatsCard extends StatelessWidget {
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-              ],
+              ]
             ],
           ),
         ],

@@ -44,83 +44,83 @@ class AppTheme {
   
   // 文字样式
   static TextTheme get textTheme => TextTheme(
-    displayLarge: GoogleFonts.pingFangSc(
+    displayLarge: GoogleFonts.notoSansSc(
       fontSize: 32,
       fontWeight: FontWeight.bold,
       color: textPrimary,
       letterSpacing: -0.5,
     ),
-    displayMedium: GoogleFonts.pingFangSc(
+    displayMedium: GoogleFonts.notoSansSc(
       fontSize: 28,
       fontWeight: FontWeight.bold,
       color: textPrimary,
       letterSpacing: -0.5,
     ),
-    displaySmall: GoogleFonts.pingFangSc(
+    displaySmall: GoogleFonts.notoSansSc(
       fontSize: 24,
       fontWeight: FontWeight.w600,
       color: textPrimary,
       letterSpacing: -0.25,
     ),
-    headlineLarge: GoogleFonts.pingFangSc(
+    headlineLarge: GoogleFonts.notoSansSc(
       fontSize: 22,
       fontWeight: FontWeight.w600,
       color: textPrimary,
     ),
-    headlineMedium: GoogleFonts.pingFangSc(
+    headlineMedium: GoogleFonts.notoSansSc(
       fontSize: 20,
       fontWeight: FontWeight.w600,
       color: textPrimary,
     ),
-    headlineSmall: GoogleFonts.pingFangSc(
+    headlineSmall: GoogleFonts.notoSansSc(
       fontSize: 18,
       fontWeight: FontWeight.w600,
       color: textPrimary,
     ),
-    titleLarge: GoogleFonts.pingFangSc(
+    titleLarge: GoogleFonts.notoSansSc(
       fontSize: 16,
       fontWeight: FontWeight.w600,
       color: textPrimary,
     ),
-    titleMedium: GoogleFonts.pingFangSc(
+    titleMedium: GoogleFonts.notoSansSc(
       fontSize: 14,
       fontWeight: FontWeight.w500,
       color: textPrimary,
     ),
-    titleSmall: GoogleFonts.pingFangSc(
+    titleSmall: GoogleFonts.notoSansSc(
       fontSize: 12,
       fontWeight: FontWeight.w500,
       color: textPrimary,
     ),
-    bodyLarge: GoogleFonts.pingFangSc(
+    bodyLarge: GoogleFonts.notoSansSc(
       fontSize: 16,
       fontWeight: FontWeight.normal,
       color: textPrimary,
       height: 1.5,
     ),
-    bodyMedium: GoogleFonts.pingFangSc(
+    bodyMedium: GoogleFonts.notoSansSc(
       fontSize: 14,
       fontWeight: FontWeight.normal,
       color: textPrimary,
       height: 1.5,
     ),
-    bodySmall: GoogleFonts.pingFangSc(
+    bodySmall: GoogleFonts.notoSansSc(
       fontSize: 12,
       fontWeight: FontWeight.normal,
       color: textSecondary,
       height: 1.4,
     ),
-    labelLarge: GoogleFonts.pingFangSc(
+    labelLarge: GoogleFonts.notoSansSc(
       fontSize: 14,
       fontWeight: FontWeight.w500,
       color: textPrimary,
     ),
-    labelMedium: GoogleFonts.pingFangSc(
+    labelMedium: GoogleFonts.notoSansSc(
       fontSize: 12,
       fontWeight: FontWeight.w500,
       color: textPrimary,
     ),
-    labelSmall: GoogleFonts.pingFangSc(
+    labelSmall: GoogleFonts.notoSansSc(
       fontSize: 10,
       fontWeight: FontWeight.w500,
       color: textSecondary,
@@ -166,7 +166,7 @@ class AppTheme {
       titleTextStyle: textTheme.headlineMedium,
       iconTheme: const IconThemeData(color: textPrimary),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
