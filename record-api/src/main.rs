@@ -16,7 +16,7 @@ use tracing_subscriber::EnvFilter;
 
 use db::Database;
 use handlers::*;
-use signature::{SignatureState};
+use signature::{signature_middleware, SignatureState};
 
 #[tokio::main]
 async fn main() {
@@ -33,7 +33,7 @@ async fn main() {
     let db_state: AppState = Arc::new(database);
     
     // 初始化签名状态
-    let _signature_state = SignatureState::new();
+    let signature_state = SignatureState::new();
 
     // CORS 配置 - 允许所有来源（开发环境）
     let cors = CorsLayer::new()
@@ -47,7 +47,7 @@ async fn main() {
         .route("/{id}", delete(delete_session))
         .route("/{id}/track-points", get(get_session_track_points))
         .route("/{id}/stats", get(get_session_stats))
-        .with_state(db_state.clone());
+        .with_state((signature_state.clone(), db_state.clone()));
 
     // 统一结构化请求日志
     let trace_layer = TraceLayer::new_for_http()
@@ -95,11 +95,10 @@ async fn main() {
         .route("/api/plans", get(get_plans).post(add_plan))
         .route("/api/plans/{id}", put(update_plan).delete(delete_plan))
         // 签名验证中间件 - 保护所有API路由
-        // .layer(from_fn(signature_middleware))
-        // .layer(from_fn(add_response_signature_middleware))
+        // .layer(axum::middleware::from_fn_with_state(signature_state.clone(), signature_middleware))
         .layer(cors)
         .layer(trace_layer)
-        .with_state(db_state);
+        .with_state((signature_state, db_state));
 
     let addr = "0.0.0.0:3001";
     info!("Server running at http://{addr}");

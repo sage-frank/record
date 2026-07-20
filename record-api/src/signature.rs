@@ -1,3 +1,8 @@
+use axum::{
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
+};
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -7,7 +12,9 @@ use tracing::warn;
 
 type HmacSha256 = Hmac<Sha256>;
 
+const APP_KEY: &str = "record_app_v2";
 const SECRET_KEY: &str = "5K8m#9cN@rP2xV7y";
+const TIMESTAMP_THRESHOLD_SECONDS: u64 = 300; // 5 minutes
 
 #[derive(Clone)]
 pub struct SignatureState {
@@ -39,6 +46,41 @@ impl SignatureState {
                 nonces.remove(&key);
             }
         }
+    }
+}
+
+#[derive(Debug)]
+pub enum SignatureError {
+    MissingHeaders,
+    InvalidTimestamp,
+    InvalidAppKey,
+    DuplicateNonce,
+    InvalidSignature,
+    ParseError(String),
+}
+
+impl std::fmt::Display for SignatureError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SignatureError::MissingHeaders => write!(f, "Missing required signature headers"),
+            SignatureError::InvalidTimestamp => write!(f, "Timestamp expired or invalid"),
+            SignatureError::InvalidAppKey => write!(f, "Invalid app key"),
+            SignatureError::DuplicateNonce => write!(f, "Replay attack detected"),
+            SignatureError::InvalidSignature => write!(f, "Signature verification failed"),
+            SignatureError::ParseError(msg) => write!(f, "Parse Error: {}", msg),
+        }
+    }
+}
+
+impl IntoResponse for SignatureError {
+    fn into_response(self) -> Response {
+        let status = match self {
+            SignatureError::DuplicateNonce => StatusCode::FORBIDDEN,
+            SignatureError::InvalidSignature => StatusCode::UNAUTHORIZED,
+            _ => StatusCode::BAD_REQUEST,
+        };
+
+        (status, format!("{{\"error\": \"{}\"}}", self)).into_response()
     }
 }
 
@@ -85,4 +127,78 @@ pub fn generate_nonce() -> String {
             CHARSET[idx] as char
         })
         .collect()
+}
+
+/// 签名验证中间件
+pub async fn signature_middleware(
+    State(signature_state): State<SignatureState>,
+    headers: HeaderMap,
+    req: axum::extract::Request,
+    next: axum::extract::Request,
+) -> Result<Response, SignatureError> {
+    let path = req.uri().path();
+    
+    // Skip signature verification for debug endpoints and health checks
+    if path.starts_with("/debug") || path == "/" {
+        return Ok(next.into_response());
+    }
+
+    // 提取签名头
+    let signature = headers
+        .get("x-signature")
+        .and_then(|v| v.to_str().ok())
+        .ok_or(SignatureError::MissingHeaders)?;
+
+    let timestamp = headers
+        .get("x-timestamp")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok())
+        .ok_or(SignatureError::MissingHeaders)?;
+
+    let nonce = headers
+        .get("x-nonce")
+        .and_then(|v| v.to_str().ok())
+        .ok_or(SignatureError::MissingHeaders)?;
+
+    let app_key = headers
+        .get("x-app-key")
+        .and_then(|v| v.to_str().ok())
+        .ok_or(SignatureError::MissingHeaders)?;
+
+    // 验证App Key
+    if app_key != APP_KEY {
+        warn!("Invalid app key: {}", app_key);
+        return Err(SignatureError::InvalidAppKey);
+    }
+
+    // 验证时间戳
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| SignatureError::InvalidTimestamp)?;
+    
+    if (now.as_secs() as i64 - timestamp as i64).abs() > TIMESTAMP_THRESHOLD_SECONDS as i64 {
+        warn!("Timestamp expired: {} (current: {})", timestamp, now.as_secs());
+        return Err(SignatureError::InvalidTimestamp);
+    }
+
+    // 检查重放攻击
+    if signature_state.is_nonce_used(nonce) {
+        warn!("Duplicate nonce detected: {}", nonce);
+        return Err(SignatureError::DuplicateNonce);
+    }
+
+    // 标记Nonce为已使用
+    signature_state.mark_nonce_used(nonce.to_string());
+
+    // 验证签名
+    let method = req.method().as_str();
+    let body_hash = ""; // 简化版本，后续可添加body hash验证
+
+    if !verify_signature(method, path, timestamp, nonce, body_hash, signature) {
+        warn!("Invalid signature for request: {} {}", method, path);
+        return Err(SignatureError::InvalidSignature);
+    }
+
+    // 签名验证通过，继续处理请求
+    Ok(next.into_response())
 }
