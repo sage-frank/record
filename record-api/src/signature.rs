@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::warn;
+use tracing::{info, warn};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -144,27 +144,47 @@ pub async fn signature_middleware(
         return Ok(next.run(req).await);
     }
 
-    // 提取签名头
+    // 提取签名头 - 添加调试日志
     let signature = headers
         .get("x-signature")
         .and_then(|v| v.to_str().ok())
-        .ok_or(SignatureError::MissingHeaders)?;
+        .ok_or_else(|| {
+            warn!("🔍 [DEBUG] Missing x-signature header. All headers: {:?}", headers);
+            SignatureError::MissingHeaders
+        })?;
 
     let timestamp = headers
         .get("x-timestamp")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<u64>().ok())
-        .ok_or(SignatureError::MissingHeaders)?;
+        .ok_or_else(|| {
+            warn!("🔍 [DEBUG] Missing or invalid x-timestamp header");
+            SignatureError::MissingHeaders
+        })?;
 
     let nonce = headers
         .get("x-nonce")
         .and_then(|v| v.to_str().ok())
-        .ok_or(SignatureError::MissingHeaders)?;
+        .ok_or_else(|| {
+            warn!("🔍 [DEBUG] Missing x-nonce header");
+            SignatureError::MissingHeaders
+        })?;
 
     let app_key = headers
         .get("x-app-key")
         .and_then(|v| v.to_str().ok())
-        .ok_or(SignatureError::MissingHeaders)?;
+        .ok_or_else(|| {
+            warn!("🔍 [DEBUG] Missing x-app-key header");
+            SignatureError::MissingHeaders
+        })?;
+    
+    // 输出详细的签名调试信息
+    info!("🔍 [SIGNATURE DEBUG] {} {}", req.method(), path);
+    info!("  📋 Headers:");
+    info!("    x-signature: {}", signature);
+    info!("    x-timestamp: {}", timestamp);
+    info!("    x-nonce: {}", nonce);
+    info!("    x-app-key: {}", app_key);
 
     // 验证App Key
     if app_key != APP_KEY {
@@ -201,13 +221,23 @@ pub async fn signature_middleware(
         .map_err(|_| SignatureError::ParseError("Failed to read request body".to_string()))?;
     let body_hash = hash_body(&body_bytes);
     
+    // 输出签名验证的详细信息
+    info!("  📝 Body Hash: {}", body_hash);
+    info!("  🔐 Expected Sign String: {}|{}|{}|{}|{}", method_str, path_str, timestamp, nonce, body_hash);
+    
     // 重新构建请求以便后续处理
     let req = axum::extract::Request::from_parts(parts, axum::body::Body::from(body_bytes));
 
     if !verify_signature(&method_str, &path_str, timestamp, nonce, &body_hash, signature) {
-        warn!("Invalid signature for request: {} {}", method_str, path_str);
+        warn!("❌ [SIGNATURE FAILED] {} {}", method_str, path_str);
+        warn!("  Provided Signature: {}", signature);
+        // 计算期望的签名用于调试
+        let sign_string = format!("{}|{}|{}|{}|{}", method_str, path_str, timestamp, nonce, body_hash);
+        warn!("  Sign String: {}", sign_string);
         return Err(SignatureError::InvalidSignature);
     }
+    
+    info!("✅ [SIGNATURE OK] {} {}", method_str, path_str);
 
     // 签名验证通过，继续处理请求
     Ok(next.run(req).await)

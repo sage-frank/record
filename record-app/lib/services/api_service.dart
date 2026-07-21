@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart' as http_io;
 import '../utils/signature_utils.dart';
+import '../utils/debug_helper.dart';
 import 'security_service.dart';
 
 class ApiService {
@@ -44,6 +45,54 @@ class ApiService {
     final ts = DateTime.now().toIso8601String();
     debugPrint('[$ts] [API] $msg');
   }
+  
+  /// 显示调试对话框 - 显示请求的详细信息
+  void _showDebugDialog(
+    String method,
+    String url,
+    Map<String, String> headers,
+    Map<String, dynamic>? body,
+  ) {
+    // 使用 DebugHelper 记录日志
+    DebugHelper.log(
+      method: method,
+      url: url,
+      headers: headers,
+      body: body,
+    );
+    
+    // 同时输出到控制台
+    final bodyStr = body != null ? const JsonEncoder.withIndent('  ').convert(body) : '(无请求体)';
+    
+    _log('🔍 [DEBUG REQUEST]');
+    _log('  Method: $method');
+    _log('  URL: $url');
+    _log('  Headers:');
+    headers.forEach((key, value) {
+      _log('    $key: $value');
+    });
+    _log('  Body: $bodyStr');
+    
+    // 控制台详细输出
+    debugPrint('\n🔍 ════════════════════════════════════════════════════');
+    debugPrint('📡 API 请求调试信息');
+    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    debugPrint('Method: $method');
+    debugPrint('URL: $url');
+    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    debugPrint('Headers:');
+    headers.forEach((key, value) {
+      debugPrint('  🔑 $key: $value');
+    });
+    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    if (body != null && body.isNotEmpty) {
+      debugPrint('Body:');
+      debugPrint(bodyStr);
+    } else {
+      debugPrint('Body: (空)');
+    }
+    debugPrint('════════════════════════════════════════════════════\n');
+  }
 
   /// 添加签名到请求
   Future<Map<String, String>> _addSignatureHeaders({
@@ -67,6 +116,9 @@ class ApiService {
     return headers;
   }
 
+  /// 调试模式开关 - 设置为 false 可关闭调试弹窗
+  static bool debugMode = true;
+  
   /// 通用签名请求方法
   Future<Map<String, dynamic>> _signedRequest({
     required String method,
@@ -80,6 +132,11 @@ class ApiService {
       path: path,
       body: body,
     );
+    
+    // 调试模式：输出详细的请求信息
+    if (debugMode) {
+      _showDebugDialog(method, url, headers, body);
+    }
 
     late http.Response response;
     
@@ -104,13 +161,26 @@ class ApiService {
         throw Exception('不支持的HTTP方法: $method');
     }
 
+    // 调试：记录响应信息
+    if (debugMode) {
+      _log('📥 [DEBUG RESPONSE] Status: ${response.statusCode}');
+      _log('   Body: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}');
+    }
+    
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       
       // 验证服务器响应签名
       if (!_verifyServerResponse(response, data)) {
-        _log('服务器响应签名验证失败');
+        _log('❌ 服务器响应签名验证失败');
+        if (debugMode) {
+          debugPrint('❌ [SIGNATURE VERIFY FAILED] Response signature invalid');
+        }
         throw Exception('服务器响应签名验证失败');
+      }
+      
+      if (debugMode) {
+        debugPrint('✅ [REQUEST SUCCESS] $method $url');
       }
       
       if (expectsList) {
@@ -119,6 +189,10 @@ class ApiService {
       
       return data;
     } else {
+      if (debugMode) {
+        debugPrint('❌ [REQUEST FAILED] $method $url - ${response.statusCode}');
+        debugPrint('   Response: ${response.body}');
+      }
       throw Exception('API请求失败: HTTP ${response.statusCode}, 响应: ${response.body}');
     }
   }
