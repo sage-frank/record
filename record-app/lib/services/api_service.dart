@@ -267,15 +267,11 @@ class ApiService {
     final url = '$baseUrl/sessions/$sessionId/track-points';
     _log('GET $url');
     try {
-      final response = await _getHttpClient().get(Uri.parse(url)).timeout(_timeout);
-      _log('响应: HTTP ${response.statusCode}');
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception(
-          '获取轨迹点失败: HTTP ${response.statusCode}, 响应: ${response.body}',
-        );
-      }
+      final data = await _signedRequest(
+        method: 'GET',
+        url: url,
+      );
+      return data;
     } on SocketException catch (e) {
       _log('Socket 异常: $e');
       throw Exception('无法连接服务器: ${e.message}');
@@ -290,15 +286,11 @@ class ApiService {
     final url = '$baseUrl/sessions/$sessionId/stats';
     _log('GET $url');
     try {
-      final response = await _getHttpClient().get(Uri.parse(url)).timeout(_timeout);
-      _log('响应: HTTP ${response.statusCode}');
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception(
-          '获取统计失败: HTTP ${response.statusCode}, 响应: ${response.body}',
-        );
-      }
+      final data = await _signedRequest(
+        method: 'GET',
+        url: url,
+      );
+      return data;
     } on SocketException catch (e) {
       _log('Socket 异常: $e');
       throw Exception('无法连接服务器: ${e.message}');
@@ -313,11 +305,10 @@ class ApiService {
     final url = '$baseUrl/sessions/$sessionId';
     _log('DELETE $url');
     try {
-      final response = await _getHttpClient().delete(Uri.parse(url)).timeout(_timeout);
-      _log('响应: HTTP ${response.statusCode}');
-      if (response.statusCode != 200) {
-        throw Exception('删除失败: HTTP ${response.statusCode}');
-      }
+      await _signedRequest(
+        method: 'DELETE',
+        url: url,
+      );
     } on SocketException catch (e) {
       _log('Socket 异常: $e');
       throw Exception('无法连接服务器: ${e.message}');
@@ -330,9 +321,16 @@ class ApiService {
   Future<Map<String, dynamic>> getProfile() async {
     final url = '$baseUrl/profile';
     _log('GET $url');
-    final response = await _getHttpClient().get(Uri.parse(url)).timeout(_timeout);
-    if (response.statusCode == 200) return jsonDecode(response.body);
-    throw Exception('获取档案失败');
+    try {
+      final data = await _signedRequest(
+        method: 'GET',
+        url: url,
+      );
+      return data;
+    } on FormatException catch (e) {
+      _log('响应格式错误: $e');
+      throw Exception('服务器响应格式异常: $e');
+    }
   }
 
   /// 更新用户档案
@@ -347,21 +345,18 @@ class ApiService {
       ),
     );
     try {
-      final response = await _getHttpClient()
-          .put(
-            Uri.parse(url),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(profile),
-          )
-          .timeout(_timeout);
+      await _signedRequest(
+        method: 'PUT',
+        url: url,
+        body: profile,
+      );
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
           msg: 'response PUT /profile',
-          data: {'status': response.statusCode},
+          data: {'status': 200},
         ),
       );
-      if (response.statusCode != 200) throw Exception('更新档案失败');
     } catch (e) {
       unawaited(
         _reportDebugEvent(
@@ -385,19 +380,19 @@ class ApiService {
       ),
     );
     try {
-      final response = await _getHttpClient().get(Uri.parse(url)).timeout(_timeout);
+      final data = await _signedRequest(
+        method: 'GET',
+        url: url,
+        expectsList: true,
+      );
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
           msg: 'response GET /weight-history',
-          data: {'status': response.statusCode},
+          data: {'status': 200},
         ),
       );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return List<Map<String, dynamic>>.from(data['records']);
-      }
-      throw Exception('获取体重历史失败');
+      return List<Map<String, dynamic>>.from(data['records']);
     } catch (e) {
       unawaited(
         _reportDebugEvent(
@@ -421,23 +416,18 @@ class ApiService {
       ),
     );
     try {
-      final response = await _getHttpClient()
-          .post(
-            Uri.parse(url),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'weight_kg': weightKg}),
-          )
-          .timeout(_timeout);
+      await _signedRequest(
+        method: 'POST',
+        url: url,
+        body: {'weight_kg': weightKg},
+      );
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
           msg: 'response POST /weight-history',
-          data: {'status': response.statusCode},
+          data: {'status': 200},
         ),
       );
-      if (response.statusCode != 200) {
-        throw Exception('添加体重记录失败: HTTP ${response.statusCode}');
-      }
     } catch (e) {
       unawaited(
         _reportDebugEvent(
@@ -461,17 +451,17 @@ class ApiService {
       ),
     );
     try {
-      final response = await _getHttpClient().delete(Uri.parse(url)).timeout(_timeout);
+      await _signedRequest(
+        method: 'DELETE',
+        url: url,
+      );
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
           msg: 'response DELETE /weight-history',
-          data: {'status': response.statusCode},
+          data: {'status': 200},
         ),
       );
-      if (response.statusCode != 200) {
-        throw Exception('删除体重记录失败: HTTP ${response.statusCode}');
-      }
     } catch (e) {
       unawaited(
         _reportDebugEvent(
@@ -496,19 +486,19 @@ class ApiService {
       ),
     );
     try {
-      final response = await _getHttpClient().get(Uri.parse(url)).timeout(_timeout);
+      final data = await _signedRequest(
+        method: 'GET',
+        url: url,
+        expectsList: true,
+      );
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
           msg: 'response GET /diet-records',
-          data: {'status': response.statusCode},
+          data: {'status': 200},
         ),
       );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return List<Map<String, dynamic>>.from(data['records']);
-      }
-      throw Exception('获取饮食记录失败');
+      return List<Map<String, dynamic>>.from(data['records']);
     } catch (e) {
       unawaited(
         _reportDebugEvent(
@@ -532,23 +522,18 @@ class ApiService {
       ),
     );
     try {
-      final response = await _getHttpClient()
-          .post(
-            Uri.parse(url),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(record),
-          )
-          .timeout(_timeout);
+      await _signedRequest(
+        method: 'POST',
+        url: url,
+        body: record,
+      );
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
           msg: 'response POST /diet-records',
-          data: {'status': response.statusCode},
+          data: {'status': 200},
         ),
       );
-      if (response.statusCode != 200) {
-        throw Exception('添加饮食记录失败: HTTP ${response.statusCode}');
-      }
     } catch (e) {
       unawaited(
         _reportDebugEvent(
@@ -572,17 +557,17 @@ class ApiService {
       ),
     );
     try {
-      final response = await _getHttpClient().delete(Uri.parse(url)).timeout(_timeout);
+      await _signedRequest(
+        method: 'DELETE',
+        url: url,
+      );
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
           msg: 'response DELETE /diet-records',
-          data: {'status': response.statusCode},
+          data: {'status': 200},
         ),
       );
-      if (response.statusCode != 200) {
-        throw Exception('删除饮食记录失败: HTTP ${response.statusCode}');
-      }
     } catch (e) {
       unawaited(
         _reportDebugEvent(
@@ -606,19 +591,19 @@ class ApiService {
       ),
     );
     try {
-      final response = await _getHttpClient().get(Uri.parse(url)).timeout(_timeout);
+      final data = await _signedRequest(
+        method: 'GET',
+        url: url,
+        expectsList: true,
+      );
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
           msg: 'response GET /plans',
-          data: {'status': response.statusCode},
+          data: {'status': 200},
         ),
       );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return List<Map<String, dynamic>>.from(data['plans']);
-      }
-      throw Exception('获取计划失败');
+      return List<Map<String, dynamic>>.from(data['records']);
     } catch (e) {
       unawaited(
         _reportDebugEvent(
@@ -642,23 +627,18 @@ class ApiService {
       ),
     );
     try {
-      final response = await _getHttpClient()
-          .post(
-            Uri.parse(url),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(plan),
-          )
-          .timeout(_timeout);
+      await _signedRequest(
+        method: 'POST',
+        url: url,
+        body: plan,
+      );
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
           msg: 'response POST /plans',
-          data: {'status': response.statusCode},
+          data: {'status': 200},
         ),
       );
-      if (response.statusCode != 200) {
-        throw Exception('添加计划失败: HTTP ${response.statusCode}');
-      }
     } catch (e) {
       unawaited(
         _reportDebugEvent(
@@ -682,23 +662,18 @@ class ApiService {
       ),
     );
     try {
-      final response = await _getHttpClient()
-          .put(
-            Uri.parse(url),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(plan),
-          )
-          .timeout(_timeout);
+      await _signedRequest(
+        method: 'PUT',
+        url: url,
+        body: plan,
+      );
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
           msg: 'response PUT /plans',
-          data: {'status': response.statusCode},
+          data: {'status': 200},
         ),
       );
-      if (response.statusCode != 200) {
-        throw Exception('更新计划失败: HTTP ${response.statusCode}');
-      }
     } catch (e) {
       unawaited(
         _reportDebugEvent(
@@ -722,22 +697,22 @@ class ApiService {
       ),
     );
     try {
-      final response = await _getHttpClient().delete(Uri.parse(url)).timeout(_timeout);
+      await _signedRequest(
+        method: 'DELETE',
+        url: url,
+      );
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'A',
           msg: 'response DELETE /plans',
-          data: {'status': response.statusCode},
+          data: {'status': 200},
         ),
       );
-      if (response.statusCode != 200) {
-        throw Exception('删除计划失败: HTTP ${response.statusCode}');
-      }
     } catch (e) {
       unawaited(
         _reportDebugEvent(
           hypothesisId: 'B',
-          msg: 'error DELETE /plans',
+        msg: 'error DELETE /plans',
           data: {'error': e.toString()},
         ),
       );
