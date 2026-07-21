@@ -16,6 +16,7 @@ use crate::models::{
 pub type AppState = std::sync::Arc<Database>;
 
 // 复合状态类型，包含数据库和签名状态
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct CombinedState {
     pub db: std::sync::Arc<Database>,

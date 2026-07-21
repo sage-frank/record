@@ -1,8 +1,7 @@
-use axum::{ 
-    extract::{State, Request},
+use axum::{
+    extract::State,
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    middleware::Next,
 };
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
@@ -117,6 +116,7 @@ pub fn hash_body(body: &[u8]) -> String {
 }
 
 /// 生成随机nonce
+#[allow(dead_code)]
 pub fn generate_nonce() -> String {
     use rand::Rng;
     const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
