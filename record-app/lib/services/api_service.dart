@@ -195,7 +195,31 @@ class ApiService {
       }
       
       if (expectsList) {
-        return {'records': List<Map<String, dynamic>>.from(data['records'] ?? data)};
+        // 兼容不同的响应格式：records, sessions, plans
+        final List<dynamic> rawList;
+        if (data['records'] != null) {
+          rawList = List<dynamic>.from(data['records']);
+        } else if (data['sessions'] != null) {
+          rawList = List<dynamic>.from(data['sessions']);
+        } else if (data['plans'] != null) {
+          rawList = List<dynamic>.from(data['plans']);
+        } else {
+          // 如果都没有，假设整个 data 就是列表
+          rawList = data is List ? List<dynamic>.from(data) : [data];
+        }
+        
+        // 安全地转换为 Map 列表
+        final List<Map<String, dynamic>> mappedList = rawList.map((item) {
+          if (item is Map<String, dynamic>) {
+            return item;
+          } else if (item is Map) {
+            return Map<String, dynamic>.from(item);
+          } else {
+            return {'data': item};
+          }
+        }).toList();
+        
+        return {'records': mappedList};
       }
       
       return data;
