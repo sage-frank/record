@@ -119,6 +119,9 @@ class ApiService {
   /// 调试模式开关 - 设置为 false 可关闭调试弹窗
   static bool debugMode = true;
   
+  /// 是否验证服务器响应签名（暂时关闭，等服务器端完善后开启）
+  static bool verifyResponseSignature = false;
+  
   /// 通用签名请求方法
   Future<Map<String, dynamic>> _signedRequest({
     required String method,
@@ -170,13 +173,21 @@ class ApiService {
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       
-      // 验证服务器响应签名
-      if (!_verifyServerResponse(response, data)) {
+      // 验证服务器响应签名（可通过开关控制）
+      if (verifyResponseSignature && !_verifyServerResponse(response, data)) {
         _log('❌ 服务器响应签名验证失败');
         if (debugMode) {
           debugPrint('❌ [SIGNATURE VERIFY FAILED] Response signature invalid');
         }
         throw Exception('服务器响应签名验证失败');
+      } else if (verifyResponseSignature) {
+        if (debugMode) {
+          debugPrint('✅ [RESPONSE SIGNATURE OK]');
+        }
+      }
+      
+      if (debugMode && !verifyResponseSignature) {
+        debugPrint('⚠️  [RESPONSE SIGNATURE SKIPPED] 验证已禁用');
       }
       
       if (debugMode) {

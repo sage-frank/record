@@ -18,7 +18,7 @@ use tracing_subscriber::EnvFilter;
 
 use db::Database;
 use handlers::*;
-use signature::{signature_middleware, SignatureState};
+use signature::{signature_middleware, response_signature_middleware, SignatureState};
 
 #[tokio::main]
 async fn main() {
@@ -104,6 +104,8 @@ async fn main() {
         .route("/api/plans/{id}", put(update_plan).delete(delete_plan))
         // 签名验证中间件 - 保护所有API路由
         .layer(axum::middleware::from_fn_with_state(signature_state.clone(), signature_middleware))
+        // 响应签名中间件 - 给响应添加签名头
+        .layer(axum::middleware::from_fn(response_signature_middleware))
         .layer(cors)
         .layer(trace_layer)
         .with_state(db_state);
