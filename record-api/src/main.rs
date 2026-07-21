@@ -9,6 +9,8 @@ use axum::{
 };
 use std::sync::Arc;
 use std::time::Duration;
+use time::macros::format_description;
+use time::UtcOffset;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing::{info, info_span};
@@ -20,12 +22,18 @@ use signature::{signature_middleware, SignatureState};
 
 #[tokio::main]
 async fn main() {
-    // 初始化日志（带时间戳 + 日志级别过滤）
+    // 初始化日志（东八区时间格式，不带 T 和 Z）
+    let timer = tracing_subscriber::fmt::time::OffsetTime::new(
+        UtcOffset::from_hms(8, 0, 0).expect("Invalid UTC offset"),
+        format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"),
+    );
+    
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
         .with_target(false)
+        .with_timer(timer)
         .init();
 
     // 初始化数据库
