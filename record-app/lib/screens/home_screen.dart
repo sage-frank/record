@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
-import 'package:fl_chart/fl_chart.dart';
-
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../models/user_profile.dart';
 import '../theme/app_theme.dart';
-import '../widgets/glass_card.dart';
-import '../widgets/animated_widgets.dart';
+import '../widgets/app_widgets.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,6 +17,7 @@ class _HomeScreenState extends State<HomeScreen> {
   UserProfile? _profile;
   double _todayCalories = 0;
   List<Map<String, dynamic>> _weightHistory = [];
+  bool _loading = true;
 
   @override
   void initState() {
@@ -38,28 +35,23 @@ class _HomeScreenState extends State<HomeScreen> {
       final today = DateTime.now().toIso8601String().substring(0, 10);
       final dietRecords = await api.getDietRecords(date: today);
       final calories = dietRecords.fold<double>(
-        0,
-        (sum, r) => sum + (r['calories'] as num).toDouble(),
+        0, (s, r) => s + (r['calories'] as num).toDouble(),
       );
 
-      final weightHistory = await api.getWeightHistory();
-      final mappedHistory =
-          weightHistory
-              .map(
-                (r) => {
-                  'id': r['id'],
-                  'weight': (r['weight_kg'] as num).toDouble(),
-                  'date': r['recorded_at'],
-                },
-              )
-              .toList();
+      final wh = await api.getWeightHistory();
+      final mapped = wh.map((r) => {
+        'id': r['id'],
+        'weight': (r['weight_kg'] as num).toDouble(),
+        'date': r['recorded_at'],
+      }).toList();
 
       await storage.saveProfile(profile);
       if (!mounted) return;
       setState(() {
         _profile = profile;
         _todayCalories = calories;
-        _weightHistory = mappedHistory;
+        _weightHistory = mapped;
+        _loading = false;
       });
     } catch (_) {
       final profile = await storage.loadProfile();
@@ -70,6 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _profile = profile;
         _todayCalories = calories;
         _weightHistory = history;
+        _loading = false;
       });
     }
   }
@@ -80,90 +73,131 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadData();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('删除失败: $e')));
     }
+  }
+
+  double get _bmi {
+    final p = _profile;
+    if (p == null) return 0;
+    final h = p.heightCm / 100;
+    return p.currentWeightKg / (h * h);
+  }
+
+  double? get _weightDelta {
+    if (_weightHistory.length < 2) return null;
+    final list = _weightHistory;
+    return (list.last['weight'] as double) - (list[list.length - 2]['weight'] as double);
   }
 
   @override
   Widget build(BuildContext context) {
-    final p = _profile;
-    if (p == null) {
-      return Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(
-            gradient: AppTheme.backgroundGradient,
-          ),
-          child: const Center(
-            child: CircularProgressIndicator(),
-          ),
-        ),
-      );
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    final p = _profile!;
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.backgroundGradient,
+      body: RefreshIndicator(
+        onRefresh: _loadData,
+        color: C.limeDim,
+        child: CustomScrollView(
+          slivers: [
+            _sliverHeader(p),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  _scaleCard(p),
+                  const SizedBox(height: 16),
+                  _calorieSection(p),
+                  const SizedBox(height: 16),
+                  _statsGrid(p),
+                  const SizedBox(height: 16),
+                  _weightTrendSection(),
+                  const SizedBox(height: 16),
+                  _quickActions(),
+                ]),
+              ),
+            ),
+          ],
         ),
-        child: SafeArea(
-          child: RefreshIndicator(
-            onRefresh: _loadData,
-            child: CustomScrollView(
-              slivers: [
-                // 自定义AppBar
-                SliverAppBar(
-                  expandedHeight: 120,
-                  floating: true,
-                  pinned: true,
-                  elevation: 0,
-                  backgroundColor: Colors.transparent,
-                  flexibleSpace: FlexibleSpaceBar(
-                    title: Text(
-                      '减重助手',
-                      style: AppTextStyles.heading2.copyWith(
-                        color: Colors.white,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black.withOpacity(0.3),
-                            offset: const Offset(0, 1),
-                            blurRadius: 3,
+      ),
+    );
+  }
+
+  // ─── Header ──────────────────────────────────────────────
+
+  SliverAppBar _sliverHeader(UserProfile p) {
+    final hour = DateTime.now().hour;
+    final greeting = hour < 12 ? '早安' : hour < 18 ? '午安' : '晚安';
+
+    return SliverAppBar(
+      expandedHeight: 140,
+      floating: true,
+      snap: true,
+      backgroundColor: C.ink,
+      flexibleSpace: FlexibleSpaceBar(
+        background: Container(
+          decoration: const BoxDecoration(color: C.ink),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: C.lime, width: 2),
+                        ),
+                        child: Center(
+                          child: Text(
+                            p.name.isNotEmpty ? p.name[0].toUpperCase() : '?',
+                            style: T.h3.copyWith(color: C.lime),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(greeting, style: T.bodyS.copyWith(color: C.slate)),
+                          Text(
+                            p.name.isNotEmpty ? p.name : '用户',
+                            style: T.h3.copyWith(color: Colors.white),
                           ),
                         ],
                       ),
-                    ),
-                    background: Container(
-                      decoration: const BoxDecoration(
-                        gradient: AppTheme.primaryGradient,
-                      ),
-                    ),
-                  ),
-                ),
-                // 内容区域
-                SliverPadding(
-                  padding: const EdgeInsets.all(16),
-                  sliver: SliverList(
-                    delegate: SliverChildListDelegate([
-                      AnimatedListView(
+                      const Spacer(),
+                      // Streak indicator
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          // 问候语
-                          _greeting(p),
-                          const SizedBox(height: 16),
-                          // 今日卡路里环
-                          _calorieRing(p),
-                          const SizedBox(height: 16),
-                          // 快捷指标
-                          _quickStats(p),
-                          const SizedBox(height: 16),
-                          // 体重趋势
-                          _weightTrend(),
+                          Text('连续记录', style: T.caption.copyWith(color: C.slate)),
+                          Row(
+                            children: [
+                              const Icon(Icons.local_fire_department, size: 16, color: C.coral),
+                              const SizedBox(width: 2),
+                              Text(
+                                '${p.daysSinceStart}',
+                                style: T.numSm.copyWith(color: C.coral),
+                              ),
+                              Text(' 天', style: T.caption.copyWith(color: C.slate)),
+                            ],
+                          ),
                         ],
                       ),
-                    ]),
+                    ],
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -171,42 +205,113 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _greeting(UserProfile p) {
-    final hour = DateTime.now().hour;
-    final greeting =
-        hour < 12
-            ? '早上好'
-            : hour < 18
-            ? '下午好'
-            : '晚上好';
-    
-    return GlassCard(
-      padding: const EdgeInsets.all(20),
+  // ─── Scale Card (signature element) ─────────────────────
+
+  Widget _scaleCard(UserProfile p) {
+    final delta = _weightDelta;
+
+    return AppCard(
+      color: C.ink,
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('当前体重', style: T.bodyS.copyWith(color: C.slate)),
+              const Spacer(),
+              if (delta != null)
+                Row(
+                  children: [
+                    Icon(
+                      delta < 0 ? Icons.south : Icons.north,
+                      size: 16,
+                      color: delta < 0 ? C.lime : C.coral,
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      '${delta.abs().toStringAsFixed(1)} kg',
+                      style: T.bodyS.copyWith(
+                        color: delta < 0 ? C.lime : C.coral,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Big scale readout
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                p.currentWeightKg.toStringAsFixed(1),
+                style: T.numXl.copyWith(color: Colors.white),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8, left: 6),
+                child: Text('kg', style: T.bodyM.copyWith(color: C.slate)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Progress bar to target
+          _weightProgressBar(p),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Text('起始 ${p.currentWeightKg.toStringAsFixed(1)}', style: T.caption.copyWith(color: C.slate)),
+              const Spacer(),
+              Text('目标 ${p.targetWeightKg.toStringAsFixed(1)} kg', style: T.caption.copyWith(color: C.lime)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _weightProgressBar(UserProfile p) {
+    final start = p.currentWeightKg;
+    final target = p.targetWeightKg;
+    final range = (start - target).abs();
+    if (range == 0) return const SizedBox.shrink();
+    final progress = ((start - p.currentWeightKg) / range).clamp(0.0, 1.0);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: LinearProgressIndicator(
+        value: progress,
+        minHeight: 6,
+        backgroundColor: C.ink2,
+        valueColor: const AlwaysStoppedAnimation(C.lime),
+      ),
+    );
+  }
+
+  // ─── Calorie section ─────────────────────────────────────
+
+  Widget _calorieSection(UserProfile p) {
+    final progress = (_todayCalories / p.dailyCalorieGoal).clamp(0.0, 1.0);
+    final remaining = p.dailyCalorieGoal - _todayCalories.toInt();
+    final over = remaining < 0;
+
+    return AppCard(
       child: Row(
         children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: AppTheme.primaryGradient,
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primaryGreen.withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
+          ProgressRing(
+            progress: progress,
+            size: 90,
+            color: over ? C.coral : C.limeDim,
+            center: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedNumber(
+                  value: _todayCalories.toInt(),
+                  style: T.numMd.copyWith(fontSize: 20),
                 ),
+                Text('kcal', style: T.caption),
               ],
-            ),
-            child: Center(
-              child: Text(
-                p.name.isNotEmpty ? p.name[0].toUpperCase() : '?',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 20,
-                ),
-              ),
             ),
           ),
           const SizedBox(width: 20),
@@ -214,15 +319,22 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '$greeting, ${p.name.isNotEmpty ? p.name : '用户'}',
-                  style: AppTextStyles.heading1,
-                ),
+                Text('今日摄入', style: T.h4),
                 const SizedBox(height: 4),
-                Text(
-                  '今天是迈向健康目标的第 ${p.daysSinceStart} 天',
-                  style: AppTextStyles.bodyMedium.copyWith(
-                    color: AppTheme.textSecondary,
+                Text('目标 ${p.dailyCalorieGoal} kcal', style: T.bodyS),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: (over ? C.coral : C.limeDim).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    over ? '超出 ${-remaining} kcal' : '剩余 $remaining kcal',
+                    style: T.bodyS.copyWith(
+                      color: over ? C.coral : C.limeDim,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
@@ -233,312 +345,311 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _calorieRing(UserProfile p) {
-    final progress = (_todayCalories / p.dailyCalorieGoal).clamp(0.0, 1.0);
-    final remaining = p.dailyCalorieGoal - _todayCalories.toInt();
+  // ─── Stats grid ──────────────────────────────────────────
 
-    return ProgressCard(
-      title: '今日卡路里摄入',
-      progress: progress,
-      current: _todayCalories.toInt().toString(),
-      target: p.dailyCalorieGoal.toString(),
-      progressColor: progress > 1.0 ? AppTheme.softRed : AppTheme.primaryGreen,
-      centerWidget: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CountUpAnimation(
-            targetValue: _todayCalories,
-            textStyle: AppTextStyles.heading2.copyWith(
-              color: progress > 1.0 ? AppTheme.softRed : AppTheme.primaryGreen,
-            ),
-          ),
-          Text(
-            'kcal',
-            style: AppTextStyles.bodySmall.copyWith(
-              color: AppTheme.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _quickStats(UserProfile p) {
+  Widget _statsGrid(UserProfile p) {
     return Column(
       children: [
+        SectionHeader(title: '身体数据'),
         Row(
           children: [
-            Expanded(
-              child: StatsCard(
-                title: '基础代谢',
-                value: '${p.bmr}',
-                unit: 'kcal/天',
-                icon: Icons.local_fire_department,
-                iconColor: AppTheme.warmOrange,
-                onTap: () {
-                  // 可以添加详细信息页面跳转
-                },
-              ),
-            ),
+            Expanded(child: StatTile(
+              label: 'BMI',
+              value: _bmi.toStringAsFixed(1),
+              icon: Icons.accessibility_new,
+              accent: C.steel,
+            )),
             const SizedBox(width: 12),
-            Expanded(
-              child: StatsCard(
-                title: '当前体重',
-                value: p.currentWeightKg.toStringAsFixed(1),
-                unit: 'kg',
-                icon: Icons.monitor_weight,
-                iconColor: AppTheme.accentBlue,
-              ),
-            ),
+            Expanded(child: StatTile(
+              label: '基础代谢',
+              value: '${p.bmr}',
+              unit: 'kcal',
+              icon: Icons.local_fire_department,
+              accent: C.coral,
+            )),
           ],
         ),
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(
-              child: StatsCard(
-                title: '目标体重',
-                value: p.targetWeightKg.toStringAsFixed(1),
-                unit: 'kg',
-                icon: Icons.flag,
-                iconColor: AppTheme.primaryGreen,
-              ),
-            ),
+            Expanded(child: StatTile(
+              label: '还需减重',
+              value: p.weightToLose.toStringAsFixed(1),
+              unit: 'kg',
+              icon: Icons.trending_down,
+              accent: C.limeDim,
+            )),
             const SizedBox(width: 12),
-            Expanded(
-              child: StatsCard(
-                title: '还需减重',
-                value: p.weightToLose.toStringAsFixed(1),
-                unit: 'kg',
-                icon: Icons.trending_down,
-                iconColor: AppTheme.softPurple,
-              ),
-            ),
+            Expanded(child: StatTile(
+              label: '已坚持',
+              value: '${p.daysSinceStart}',
+              unit: '天',
+              icon: Icons.event_available,
+              accent: C.steel,
+            )),
           ],
         ),
       ],
     );
   }
 
-  Widget _weightTrend() {
-    if (_weightHistory.length < 2) {
-      return ModernCard(
-        onTap: _weightHistory.isEmpty ? null : () => _showWeightHistorySheet(),
-        child: SizedBox(
-          height: 150,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.show_chart,
-                size: 48,
-                color: AppTheme.textHint,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                _weightHistory.isEmpty ? '记录体重后这里将显示趋势图' : '点击查看体重记录',
-                style: AppTextStyles.bodyMedium.copyWith(
-                  color: AppTheme.textSecondary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+  // ─── Weight trend ────────────────────────────────────────
+
+  Widget _weightTrendSection() {
+    final weights = _weightHistory.map((e) => e['weight'] as double).toList();
+    final recent = weights.length > 14 ? weights.sublist(weights.length - 14) : weights;
+
+    return Column(
+      children: [
+        SectionHeader(
+          title: '体重趋势',
+          action: _weightHistory.isNotEmpty ? '查看记录' : null,
+          onAction: _weightHistory.isNotEmpty ? _showWeightSheet : null,
         ),
-      );
-    }
+        AppCard(
+          onTap: _weightHistory.length >= 2 ? _showWeightSheet : null,
+          child: recent.length >= 2
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          recent.last.toStringAsFixed(1),
+                          style: T.numMd,
+                        ),
+                        Text(' kg', style: T.bodyS),
+                        const Spacer(),
+                        Text('近${recent.length}天', style: T.caption),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    WeightChart(weights: recent, height: 140),
+                  ],
+                )
+              : SizedBox(
+                  height: 120,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.show_chart, size: 40, color: C.slate),
+                        const SizedBox(height: 8),
+                        Text('记录体重后显示趋势', style: T.bodyS),
+                      ],
+                    ),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
 
-    // 取最近14条数据
-    final data = _weightHistory.length > 14
-        ? _weightHistory.sublist(_weightHistory.length - 14)
-        : _weightHistory;
+  // ─── Quick actions ───────────────────────────────────────
 
-    return ModernCard(
-      onTap: _showWeightHistorySheet,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _quickActions() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionHeader(title: '快捷操作'),
+        Row(
+          children: [
+            Expanded(child: _actionButton('记录体重', Icons.monitor_weight, C.steel, () => _showWeightDialog())),
+            const SizedBox(width: 12),
+            Expanded(child: _actionButton('更新目标', Icons.flag, C.coral, () => _showTargetDialog())),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _actionButton(String label, IconData icon, Color color, VoidCallback onTap) {
+    return AppCard(
+      onTap: onTap,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Text(
-                '体重趋势',
-                style: AppTextStyles.subtitle1,
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryGreen.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '最近${data.length}天',
-                  style: AppTextStyles.labelSmall.copyWith(
-                    color: AppTheme.primaryGreen,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 200,
-            child: LineChart(
-              LineChartData(
-                gridData: FlGridData(show: false),
-                titlesData: FlTitlesData(show: false),
-                borderData: FlBorderData(show: false),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: data.asMap().entries.map((entry) {
-                      return FlSpot(entry.key.toDouble(), entry.value['weight'] as double);
-                    }).toList(),
-                    isCurved: true,
-                    gradient: AppTheme.primaryGradient,
-                    barWidth: 3,
-                    isStrokeCapRound: true,
-                    dotData: FlDotData(
-                      show: true,
-                      getDotPainter: (spot, percent, barData, index) {
-                        return FlDotCirclePainter(
-                          radius: 4,
-                          color: AppTheme.primaryGreen,
-                          strokeWidth: 2,
-                          strokeColor: Colors.white,
-                        );
-                      },
-                    ),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          AppTheme.primaryGreen.withOpacity(0.2),
-                          AppTheme.primaryGreen.withOpacity(0.05),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
             ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Text(label, style: T.label),
+          const Spacer(),
+          const Icon(Icons.chevron_right, size: 18, color: C.slate),
+        ],
+      ),
+    );
+  }
+
+  // ─── Dialogs ─────────────────────────────────────────────
+
+  void _showWeightDialog() {
+    final ctrl = TextEditingController(text: _profile!.currentWeightKg.toStringAsFixed(1));
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('记录体重', style: T.h3),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: '体重 (kg)'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          ElevatedButton(
+            onPressed: () async {
+              final w = double.tryParse(ctrl.text);
+              if (w == null) return;
+              final api = context.read<ApiService>();
+              final storage = context.read<StorageService>();
+              final old = _profile!;
+              final updated = UserProfile(
+                name: old.name,
+                currentWeightKg: w,
+                targetWeightKg: old.targetWeightKg,
+                heightCm: old.heightCm,
+                age: old.age,
+                gender: old.gender,
+                dailyCalorieGoal: old.dailyCalorieGoal,
+              );
+              try {
+                await api.addWeightRecord(w);
+                await api.updateProfile(updated.toApiJson());
+                await storage.saveProfile(updated);
+                if (ctx.mounted) Navigator.pop(ctx);
+                await _loadData();
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
+                }
+              }
+            },
+            child: const Text('保存'),
           ),
         ],
       ),
     );
   }
 
-  void _showWeightHistorySheet() {
+  void _showTargetDialog() {
+    final ctrl = TextEditingController(text: _profile!.targetWeightKg.toStringAsFixed(1));
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('设置目标体重', style: T.h3),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: '目标体重 (kg)'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          ElevatedButton(
+            onPressed: () async {
+              final w = double.tryParse(ctrl.text);
+              if (w == null) return;
+              final api = context.read<ApiService>();
+              final storage = context.read<StorageService>();
+              final old = _profile!;
+              final updated = UserProfile(
+                name: old.name,
+                currentWeightKg: old.currentWeightKg,
+                targetWeightKg: w,
+                heightCm: old.heightCm,
+                age: old.age,
+                gender: old.gender,
+                dailyCalorieGoal: old.dailyCalorieGoal,
+              );
+              try {
+                await api.updateProfile(updated.toApiJson());
+                await storage.saveProfile(updated);
+                if (ctx.mounted) Navigator.pop(ctx);
+                await _loadData();
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
+                }
+              }
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showWeightSheet() {
     final items = [..._weightHistory].reversed.toList();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        height: MediaQuery.of(context).size.height * 0.7,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.65,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (ctx, scroll) {
+          return Column(
+            children: [
+              Container(
+                width: 40, height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(color: C.line, borderRadius: BorderRadius.circular(2)),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Text(
-                    '体重历史记录',
-                    style: AppTextStyles.heading3,
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: Text(
-                      '关闭',
-                      style: AppTextStyles.labelLarge.copyWith(
-                        color: AppTheme.primaryGreen,
-                      ),
-                    ),
-                  ),
-                ],
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Text('体重记录', style: T.h3),
+                    const Spacer(),
+                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+                  ],
+                ),
               ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: items.length,
-                itemBuilder: (context, index) {
-                  final item = items[index];
-                  final id = item['id'];
-                  final date = item['date'] as String?;
-                  final weight = item['weight'] as double;
-                  
-                  return ModernCard(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: AppTheme.primaryGradient,
-                          ),
-                          child: Center(
-                            child: Text(
-                              '${weight.toStringAsFixed(1).split('.')[0]}',
-                              style: AppTextStyles.labelSmall.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
+              Expanded(
+                child: ListView.builder(
+                  controller: scroll,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  itemCount: items.length,
+                  itemBuilder: (ctx, i) {
+                    final item = items[i];
+                    final id = item['id'];
+                    final date = item['date'] as String?;
+                    final weight = item['weight'] as double;
+                    return AppCard(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          Text(weight.toStringAsFixed(1), style: T.numMd),
+                          Text(' kg', style: T.bodyS),
+                          const Spacer(),
+                          Text(date?.substring(0, 10) ?? '--', style: T.caption),
+                          if (id != null) ...[
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () {
+                                Navigator.pop(ctx);
+                                _deleteWeightRecord(id as int);
+                              },
+                              child: const Icon(Icons.delete_outline, size: 18, color: C.coral),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${weight.toStringAsFixed(1)} kg',
-                                style: AppTextStyles.subtitle2,
-                              ),
-                              Text(
-                                date ?? '--',
-                                style: AppTextStyles.bodySmall.copyWith(
-                                  color: AppTheme.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (id != null)
-                          IconButton(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _deleteWeightRecord(id as int);
-                            },
-                            icon: const Icon(Icons.delete_outline),
-                            color: AppTheme.softRed,
-                          ),
-                      ],
-                    ),
-                  );
-                },
+                          ],
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          );
+        },
       ),
     );
   }

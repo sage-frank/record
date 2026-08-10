@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../services/storage_service.dart';
+import '../theme/app_theme.dart';
 import 'main_shell.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -12,199 +13,123 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen>
-    with SingleTickerProviderStateMixin {
-  final _pinController = TextEditingController();
+class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
   String _pin = '';
   String? _error;
   bool _confirmMode = false;
   String _firstPin = '';
-  late AnimationController _shakeController;
+  late AnimationController _shake;
 
   @override
   void initState() {
     super.initState();
-    _shakeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
+    _shake = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
   }
 
   @override
   void dispose() {
-    _pinController.dispose();
-    _shakeController.dispose();
+    _shake.dispose();
     super.dispose();
   }
 
-  void _onKeyTap(String value) {
-    if (value == 'del') {
-      if (_pin.isNotEmpty) {
-        setState(() {
-          _pin = _pin.substring(0, _pin.length - 1);
-          _error = null;
-        });
-      }
+  void _onKey(String v) {
+    if (v == 'del') {
+      if (_pin.isNotEmpty) setState(() { _pin = _pin.substring(0, _pin.length - 1); _error = null; });
       return;
     }
     if (_pin.length >= 6) return;
-    setState(() {
-      _pin += value;
-      _error = null;
-    });
-
-    if (_pin.length == 6) {
-      _submit();
-    }
+    setState(() { _pin += v; _error = null; });
+    if (_pin.length == 6) _submit();
   }
 
   Future<void> _submit() async {
     final storage = context.read<StorageService>();
-
     if (widget.isSetup) {
-      // 首次设置 PIN
       if (!_confirmMode) {
-        setState(() {
-          _firstPin = _pin;
-          _pin = '';
-          _confirmMode = true;
-        });
+        setState(() { _firstPin = _pin; _pin = ''; _confirmMode = true; });
         return;
       }
       if (_pin != _firstPin) {
-        _shake();
-        setState(() {
-          _error = '两次 PIN 不一致，请重试';
-          _pin = '';
-          _confirmMode = false;
-          _firstPin = '';
-        });
+        _shake.forward(from: 0);
+        setState(() { _error = '两次 PIN 不一致'; _pin = ''; _confirmMode = false; _firstPin = ''; });
         return;
       }
       await storage.setPin(_pin);
       if (!mounted) return;
       _goHome();
     } else {
-      // 验证 PIN
-      final ok = await storage.verifyPin(_pin);
-      if (!ok) {
-        _shake();
-        setState(() {
-          _error = 'PIN 不正确';
-          _pin = '';
-        });
-        return;
+      if (await storage.verifyPin(_pin)) {
+        _goHome();
+      } else {
+        _shake.forward(from: 0);
+        setState(() { _error = 'PIN 不正确'; _pin = ''; });
       }
-      _goHome();
     }
   }
 
-  void _shake() {
-    _shakeController.forward(from: 0);
-  }
-
   void _goHome() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const MainShell()),
-    );
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainShell()));
   }
 
   @override
   Widget build(BuildContext context) {
-    final title =
-        widget.isSetup ? (_confirmMode ? '确认 PIN' : '设置登录 PIN') : '输入 PIN 解锁';
+    final title = widget.isSetup
+        ? (_confirmMode ? '确认 PIN' : '设置登录 PIN')
+        : '输入 PIN 解锁';
 
     return Scaffold(
+      backgroundColor: C.ink,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 32),
             child: AnimatedBuilder(
-              animation: _shakeController,
-              builder: (context, child) {
-                final shake = _shakeController.value;
-                final offset = shake < 0.5 ? shake * 30 : (1 - shake) * 30;
+              animation: _shake,
+              builder: (ctx, child) {
+                final s = _shake.value;
+                final off = s < 0.5 ? s * 24 : (1 - s) * 24;
                 return Transform.translate(
-                  offset: Offset(
-                    offset *
-                        (shake < 0.25
-                            ? 1
-                            : shake < 0.5
-                            ? -1
-                            : shake < 0.75
-                            ? 1
-                            : -1),
-                    0,
-                  ),
+                  offset: Offset(off * (s < 0.25 ? 1 : s < 0.5 ? -1 : s < 0.75 ? 1 : -1), 0),
                   child: child,
                 );
               },
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Logo
                   Container(
-                    width: 80,
-                    height: 80,
+                    width: 72, height: 72,
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Theme.of(context).colorScheme.primary,
-                          Theme.of(context).colorScheme.tertiary,
-                        ],
-                      ),
                       borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: C.lime, width: 2),
                     ),
-                    child: const Icon(
-                      Icons.monitor_heart,
-                      color: Colors.white,
-                      size: 40,
-                    ),
+                    child: const Icon(Icons.monitor_heart, color: C.lime, size: 36),
                   ),
                   const SizedBox(height: 24),
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '减重助手',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyLarge?.copyWith(color: Colors.grey[500]),
-                  ),
+                  Text(title, style: T.h2.copyWith(color: Colors.white)),
+                  const SizedBox(height: 6),
+                  Text('减重助手', style: T.bodyS.copyWith(color: C.slate)),
                   const SizedBox(height: 32),
                   // PIN dots
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(6, (i) {
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        margin: const EdgeInsets.symmetric(horizontal: 6),
-                        width: 16,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color:
-                              i < _pin.length
-                                  ? Theme.of(context).colorScheme.primary
-                                  : Colors.grey[300],
-                        ),
-                      );
-                    }),
+                    children: List.generate(6, (i) => AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      margin: const EdgeInsets.symmetric(horizontal: 6),
+                      width: 14, height: 14,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i < _pin.length ? C.lime : C.ink2,
+                        border: Border.all(color: i < _pin.length ? C.lime : C.slate.withOpacity(0.3)),
+                      ),
+                    )),
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 16),
-                    Text(
-                      _error!,
-                      style: TextStyle(color: Colors.red[700], fontSize: 14),
-                    ),
+                    Text(_error!, style: T.bodyS.copyWith(color: C.coral)),
                   ],
                   const SizedBox(height: 40),
-                  // Keypad
-                  _buildKeypad(),
+                  _keypad(),
                 ],
               ),
             ),
@@ -214,54 +139,33 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _buildKeypad() {
+  Widget _keypad() {
     return GridView.count(
       crossAxisCount: 3,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 8,
-      crossAxisSpacing: 8,
-      childAspectRatio: 2,
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 1.8,
       children: [
-        for (final key in [
-          '1',
-          '2',
-          '3',
-          '4',
-          '5',
-          '6',
-          '7',
-          '8',
-          '9',
-          'clear',
-          '0',
-          'del',
-        ])
-          _buildKey(key),
+        for (final k in ['1','2','3','4','5','6','7','8','9','','0','del']) _key(k),
       ],
     );
   }
 
-  Widget _buildKey(String key) {
-    if (key == 'clear') return const SizedBox.shrink();
-
-    final isDelete = key == 'del';
+  Widget _key(String k) {
+    if (k.isEmpty) return const SizedBox.shrink();
+    final isDel = k == 'del';
     return Material(
-      color: Colors.transparent,
+      color: C.ink2,
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => _onKeyTap(key),
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => _onKey(k),
         child: Center(
-          child:
-              isDelete
-                  ? Icon(Icons.backspace_outlined, color: Colors.grey[600])
-                  : Text(
-                    key,
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+          child: isDel
+              ? const Icon(Icons.backspace_outlined, color: C.slate)
+              : Text(k, style: T.numMd.copyWith(color: Colors.white, fontSize: 24)),
         ),
       ),
     );

@@ -26,14 +26,13 @@ class RecordApp extends StatelessWidget {
       child: MaterialApp(
         title: '减重助手',
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
+        theme: AppTheme.light,
         home: const AuthGate(),
       ),
     );
   }
 }
 
-/// 判断是否需要登录
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
@@ -41,15 +40,11 @@ class AuthGate extends StatelessWidget {
   Widget build(BuildContext context) {
     return FutureBuilder<bool>(
       future: context.read<StorageService>().hasPin(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const Scaffold(backgroundColor: C.ink, body: Center(child: CircularProgressIndicator(color: C.lime)));
         }
-        if (snapshot.data == true) {
-          return const LoginScreen();
-        }
+        if (snap.data == true) return const LoginScreen();
         return const LoginScreen(isSetup: true);
       },
     );
