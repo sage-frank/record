@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
@@ -433,12 +434,14 @@ class _RunScreenState extends State<RunScreen> with SingleTickerProviderStateMix
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 6,
-                    children: [for (final d in [1, 2, 3, 4, 5, 6, 7])]
-                      FilterChip(
-                        label: Text(['一', '二', '三', '四', '五', '六', '日'][d - 1]),
-                        selected: selectedDays.contains(d),
-                        onSelected: (v) => setSheet(() => v ? selectedDays.add(d) : selectedDays.remove(d)),
-                      ),
+                    children: [
+                      for (final d in [1, 2, 3, 4, 5, 6, 7])
+                        FilterChip(
+                          label: Text(['一', '二', '三', '四', '五', '六', '日'][d - 1]),
+                          selected: selectedDays.contains(d),
+                          onSelected: (v) => setSheet(() => v ? selectedDays.add(d) : selectedDays.remove(d)),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 20),
                   SizedBox(

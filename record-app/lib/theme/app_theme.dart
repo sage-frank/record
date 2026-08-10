@@ -99,7 +99,7 @@ class AppTheme {
           titleTextStyle: T.h3,
           iconTheme: const IconThemeData(color: C.ink),
         ),
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           elevation: 0,
           color: Colors.white,
           shape: RoundedRectangleBorder(
