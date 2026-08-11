@@ -3,28 +3,26 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:http/io_client.dart' as http_io;
+import '../data/repositories/error_repository.dart';
+import '../utils/error_reporter.dart';
+import '../utils/http_client_provider.dart';
+import '../utils/request_id_provider.dart';
 import '../utils/signature_utils.dart';
 import '../utils/debug_helper.dart';
 import 'security_service.dart';
 
 class ApiService {
+  ApiService({ErrorReportRepository? errorRepository})
+      : _errorRepository = errorRepository;
+
+  /// 异常上报仓库（可选注入，用于请求失败时自动上报）
+  final ErrorReportRepository? _errorRepository;
+
   // 远程服务器地址
   static const String baseUrl = 'https://39.105.113.213:3000/api';
-  static http.Client? _customClient;
 
   // 创建支持自签名证书的 HTTP 客户端
-  static http.Client _getHttpClient() {
-    if (_customClient != null) return _customClient!;
-
-    // 创建一个信任所有证书的 HttpClient
-    final client = HttpClient();
-    client.badCertificateCallback = (cert, host, port) => true;
-    
-    // 使用 IOClient 来包装我们的 HttpClient
-    _customClient = http_io.IOClient(client);
-    return _customClient!;
-  }
+  static http.Client _getHttpClient() => HttpClientProvider.get();
   static const String _debugServerUrl = String.fromEnvironment(
     'DEBUG_SERVER_URL',
     defaultValue: '',
@@ -45,7 +43,7 @@ class ApiService {
     final ts = DateTime.now().toIso8601String();
     debugPrint('[$ts] [API] $msg');
   }
-  
+
   /// 显示调试对话框 - 显示请求的详细信息
   void _showDebugDialog(
     String method,
@@ -60,10 +58,10 @@ class ApiService {
       headers: headers,
       body: body,
     );
-    
+
     // 同时输出到控制台
     final bodyStr = body != null ? const JsonEncoder.withIndent('  ').convert(body) : '(无请求体)';
-    
+
     _log('🔍 [DEBUG REQUEST]');
     _log('  Method: $method');
     _log('  URL: $url');
@@ -72,7 +70,7 @@ class ApiService {
       _log('    $key: $value');
     });
     _log('  Body: $bodyStr');
-    
+
     // 控制台详细输出
     debugPrint('\n🔍 ════════════════════════════════════════════════════');
     debugPrint('📡 API 请求调试信息');
@@ -118,10 +116,10 @@ class ApiService {
 
   /// 调试模式开关 - 设置为 false 可关闭调试弹窗
   static bool debugMode = true;
-  
+
   /// 是否验证服务器响应签名（暂时关闭，等服务器端完善后开启）
   static bool verifyResponseSignature = false;
-  
+
   /// 通用签名请求方法
   Future<Map<String, dynamic>> _signedRequest({
     required String method,
@@ -130,38 +128,52 @@ class ApiService {
     bool expectsList = false,
   }) async {
     final path = SignatureUtils.extractPath(url);
+    // 每次请求生成唯一请求 ID，供后端记录跟踪、异常关联
+    final requestId = RequestIdProvider.generate();
     final headers = await _addSignatureHeaders(
       method: method,
       path: path,
       body: body,
+      existingHeaders: {'X-Request-Id': requestId},
     );
-    
+
     // 调试模式：输出详细的请求信息
     if (debugMode) {
       _showDebugDialog(method, url, headers, body);
     }
 
     late http.Response response;
-    
-    switch (method.toUpperCase()) {
-      case 'GET':
-        response = await _getHttpClient().get(Uri.parse(url), headers: headers).timeout(_timeout);
-        break;
-      case 'POST':
-        response = await _getHttpClient()
-            .post(Uri.parse(url), headers: headers, body: jsonEncode(body))
-            .timeout(_timeout);
-        break;
-      case 'PUT':
-        response = await _getHttpClient()
-            .put(Uri.parse(url), headers: headers, body: jsonEncode(body))
-            .timeout(_timeout);
-        break;
-      case 'DELETE':
-        response = await _getHttpClient().delete(Uri.parse(url), headers: headers).timeout(_timeout);
-        break;
-      default:
-        throw Exception('不支持的HTTP方法: $method');
+    try {
+      switch (method.toUpperCase()) {
+        case 'GET':
+          response = await _getHttpClient().get(Uri.parse(url), headers: headers).timeout(_timeout);
+          break;
+        case 'POST':
+          response = await _getHttpClient()
+              .post(Uri.parse(url), headers: headers, body: jsonEncode(body))
+              .timeout(_timeout);
+          break;
+        case 'PUT':
+          response = await _getHttpClient()
+              .put(Uri.parse(url), headers: headers, body: jsonEncode(body))
+              .timeout(_timeout);
+          break;
+        case 'DELETE':
+          response = await _getHttpClient().delete(Uri.parse(url), headers: headers).timeout(_timeout);
+          break;
+        default:
+          throw Exception('不支持的HTTP方法: $method');
+      }
+    } catch (e, st) {
+      // 请求异常：上报（携带请求 ID），然后继续向外抛出，不允许吞掉
+      _reportRequestError(
+        method: method,
+        url: url,
+        requestId: requestId,
+        error: e,
+        stackTrace: st,
+      );
+      rethrow;
     }
 
     // 调试：记录响应信息
@@ -169,10 +181,10 @@ class ApiService {
       _log('📥 [DEBUG RESPONSE] Status: ${response.statusCode}');
       _log('   Body: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}');
     }
-    
+
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      
+
       // 验证服务器响应签名（可通过开关控制）
       if (verifyResponseSignature && !_verifyServerResponse(response, data)) {
         _log('❌ 服务器响应签名验证失败');
@@ -185,15 +197,15 @@ class ApiService {
           debugPrint('✅ [RESPONSE SIGNATURE OK]');
         }
       }
-      
+
       if (debugMode && !verifyResponseSignature) {
         debugPrint('⚠️  [RESPONSE SIGNATURE SKIPPED] 验证已禁用');
       }
-      
+
       if (debugMode) {
         debugPrint('✅ [REQUEST SUCCESS] $method $url');
       }
-      
+
       if (expectsList) {
         // 兼容不同的响应格式：records, sessions, plans
         final List<dynamic> rawList;
@@ -207,7 +219,7 @@ class ApiService {
           // 如果都没有，假设整个 data 就是列表
           rawList = data is List ? List<dynamic>.from(data) : [data];
         }
-        
+
         // 安全地转换为 Map 列表
         final List<Map<String, dynamic>> mappedList = rawList.map((item) {
           if (item is Map<String, dynamic>) {
@@ -218,18 +230,62 @@ class ApiService {
             return {'data': item};
           }
         }).toList();
-        
+
         return {'records': mappedList};
       }
-      
+
       return data;
     } else {
       if (debugMode) {
         debugPrint('❌ [REQUEST FAILED] $method $url - ${response.statusCode}');
         debugPrint('   Response: ${response.body}');
       }
+      // 非 200 响应：上报（携带请求 ID），然后抛出异常
+      _reportRequestError(
+        method: method,
+        url: url,
+        requestId: requestId,
+        statusCode: response.statusCode,
+        responseBody: response.body,
+      );
       throw Exception('API请求失败: HTTP ${response.statusCode}, 响应: ${response.body}');
     }
+  }
+
+  /// 请求失败自动上报（携带请求 ID，供后端关联追踪）
+  void _reportRequestError({
+    required String method,
+    required String url,
+    required String requestId,
+    Object? error,
+    StackTrace? stackTrace,
+    int? statusCode,
+    String? responseBody,
+  }) {
+    final repository = _errorRepository;
+    if (repository == null) {
+      debugPrint('[ApiService] 请求失败（未注入错误上报，仅输出）: $method $url -> $error');
+      return;
+    }
+    final message = statusCode != null
+        ? 'API请求失败: HTTP $statusCode'
+        : 'API请求异常: $error';
+    ErrorReporter.reportError(
+      message: message,
+      source: 'api_service',
+      error: statusCode != null ? null : error,
+      stackTrace: stackTrace,
+      url: url,
+      requestId: requestId,
+      context: {
+        'method': method,
+        if (statusCode != null) 'status': statusCode,
+        if (responseBody != null && responseBody.isNotEmpty)
+          'response_body': responseBody.length > 2000
+              ? '${responseBody.substring(0, 2000)}...'
+              : responseBody,
+      },
+    );
   }
 
   /// 验证服务器响应
@@ -289,7 +345,9 @@ class ApiService {
             }),
           )
           .timeout(_debugTimeout);
-    } catch (_) {}
+    } catch (e) {
+      _log('调试事件上报失败: $e');
+    }
   }
 
   /// 批量上传轨迹点
@@ -300,7 +358,9 @@ class ApiService {
     final url = '$baseUrl/track-points/batch';
     final requestBody = {'session_id': sessionId, 'points': points};
     final path = SignatureUtils.extractPath(url);
-    
+    // 每次上传生成唯一请求 ID，供后端记录跟踪、异常关联
+    final requestId = RequestIdProvider.generate();
+
     _log('POST $url session=$sessionId points=${points.length}');
 
     try {
@@ -308,6 +368,7 @@ class ApiService {
         method: 'POST',
         path: path,
         body: requestBody,
+        existingHeaders: {'X-Request-Id': requestId},
       );
 
       final response = await _getHttpClient()
@@ -324,29 +385,57 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        
+
         // 验证服务器响应签名
         if (!_verifyServerResponse(response, data)) {
           _log('服务器响应签名验证失败');
           throw Exception('服务器响应签名验证失败');
         }
-        
+
         _log('上传成功');
         return data;
       } else {
         _log('上传失败 HTTP ${response.statusCode}: ${response.body}');
+        _reportRequestError(
+          method: 'POST',
+          url: url,
+          requestId: requestId,
+          statusCode: response.statusCode,
+          responseBody: response.body,
+        );
         throw Exception(
           '上传失败: HTTP ${response.statusCode}, 响应: ${response.body}',
         );
       }
-    } on SocketException catch (e) {
+    } on SocketException catch (e, st) {
       _log('Socket 异常: $e');
+      _reportRequestError(
+        method: 'POST',
+        url: url,
+        requestId: requestId,
+        error: e,
+        stackTrace: st,
+      );
       throw Exception('无法连接服务器: ${e.message}');
-    } on HttpException catch (e) {
+    } on HttpException catch (e, st) {
       _log('HTTP 异常: $e');
+      _reportRequestError(
+        method: 'POST',
+        url: url,
+        requestId: requestId,
+        error: e,
+        stackTrace: st,
+      );
       throw Exception('HTTP 错误: ${e.message}');
-    } on FormatException catch (e) {
+    } on FormatException catch (e, st) {
       _log('响应格式错误: $e');
+      _reportRequestError(
+        method: 'POST',
+        url: url,
+        requestId: requestId,
+        error: e,
+        stackTrace: st,
+      );
       throw Exception('服务器响应格式异常: $e');
     }
   }
@@ -829,5 +918,3 @@ class ApiService {
     }
   }
 }
-
-

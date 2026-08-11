@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 import '../models/run_result.dart';
 import '../utils/coord_transform.dart';
+import '../utils/error_reporter.dart';
 import 'api_service.dart';
 
 class TrackPoint {
@@ -212,8 +213,15 @@ class LocationService extends ChangeNotifier {
       if (pedometerOk) {
         _startPedometer();
       }
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('[LocationService] 计步器启动失败: $e');
+      ErrorReporter.reportError(
+        message: '计步器启动失败',
+        source: 'location_service',
+        error: e,
+        stackTrace: st,
+        context: {'session_id': _sessionId},
+      );
       _lastPedometerError = e.toString();
       _pushDebugEvent('计步器启动失败: $e');
       notifyListeners();
@@ -293,9 +301,16 @@ class LocationService extends ChangeNotifier {
       );
       _pushDebugEvent('首次定位成功');
       _appendPosition(position);
-    } catch (e) {
+    } catch (e, st) {
       final errStr = e.toString();
       debugPrint('首次定位失败: $errStr');
+      ErrorReporter.reportError(
+        message: '首次定位失败',
+        source: 'location_service',
+        error: e,
+        stackTrace: st,
+        context: {'session_id': _sessionId},
+      );
       _lastGpsError = 'GPS: $errStr';
       _pushDebugEvent('首次定位失败: $errStr');
       _syncElapsed();
@@ -508,9 +523,20 @@ class LocationService extends ChangeNotifier {
         '上传成功: 本次=${pendingPoints.length} 总计=$_lastUploadedIndex',
       );
       notifyListeners();
-    } catch (e) {
+    } catch (e, st) {
       _uploadStatus = '同步失败: $e';
       debugPrint('[LocationService] 增量上传失败: $e');
+      ErrorReporter.reportError(
+        message: '增量上传轨迹点失败',
+        source: 'location_service',
+        error: e,
+        stackTrace: st,
+        context: {
+          'session_id': sessionId,
+          'pending_points': pendingPoints.length,
+        },
+        url: '/api/track-points/batch',
+      );
       _pushDebugEvent('上传失败: $e');
       notifyListeners();
     }
@@ -590,9 +616,20 @@ class LocationService extends ChangeNotifier {
       );
       notifyListeners();
       return result;
-    } catch (e) {
+    } catch (e, st) {
       _uploadStatus = '上传失败';
       debugPrint('[LocationService] 停止上传失败: $e');
+      ErrorReporter.reportError(
+        message: '结束上传轨迹点失败',
+        source: 'location_service',
+        error: e,
+        stackTrace: st,
+        context: {
+          'session_id': _sessionId,
+          'total_points': _currentTrack.length,
+        },
+        url: '/api/track-points/batch',
+      );
       _pushDebugEvent('结束上传失败: $e');
       notifyListeners();
       rethrow;

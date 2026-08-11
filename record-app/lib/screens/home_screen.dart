@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../models/user_profile.dart';
 import '../theme/app_theme.dart';
+import '../utils/error_reporter.dart';
 import '../widgets/app_widgets.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -53,7 +54,15 @@ class _HomeScreenState extends State<HomeScreen> {
         _weightHistory = mapped;
         _loading = false;
       });
-    } catch (_) {
+    } catch (e, st) {
+      // 网络失败回退到本地缓存，但异常必须上报，不允许吞掉
+      ErrorReporter.reportError(
+        message: '加载首页数据失败，回退本地缓存',
+        source: 'home_screen',
+        error: e,
+        stackTrace: st,
+        url: '/api/profile',
+      );
       final profile = await storage.loadProfile();
       final calories = await storage.getTodayCalories();
       final history = await storage.loadWeightHistory();
@@ -71,7 +80,15 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       await context.read<ApiService>().deleteWeightRecord(id);
       await _loadData();
-    } catch (e) {
+    } catch (e, st) {
+      ErrorReporter.reportError(
+        message: '删除体重记录失败',
+        source: 'home_screen',
+        error: e,
+        stackTrace: st,
+        url: '/api/weight-history/$id',
+        context: {'record_id': id},
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('删除失败: $e')));
     }
@@ -523,7 +540,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 await storage.saveProfile(updated);
                 if (ctx.mounted) Navigator.pop(ctx);
                 await _loadData();
-              } catch (e) {
+              } catch (e, st) {
+                ErrorReporter.reportError(
+                  message: '保存体重失败',
+                  source: 'home_screen',
+                  error: e,
+                  stackTrace: st,
+                  url: '/api/weight-history',
+                );
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
                 }
@@ -570,7 +594,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 await storage.saveProfile(updated);
                 if (ctx.mounted) Navigator.pop(ctx);
                 await _loadData();
-              } catch (e) {
+              } catch (e, st) {
+                ErrorReporter.reportError(
+                  message: '更新目标体重失败',
+                  source: 'home_screen',
+                  error: e,
+                  stackTrace: st,
+                  url: '/api/profile',
+                );
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
                 }

@@ -13,6 +13,7 @@ import {
   Card,
   Row,
   Col,
+  Menu,
 } from 'antd';
 import {
   HistoryOutlined,
@@ -28,6 +29,7 @@ import {
 import axios from 'axios';
 import dayjs from 'dayjs';
 import TrackMap from './components/TrackMap';
+import ErrorLogs from './components/ErrorLogs';
 
 // API 基础地址：开发时直接请求后端，不走 Vite 代理
 const api = axios.create({
@@ -35,7 +37,7 @@ const api = axios.create({
   timeout: 15000,
 });
 
-const { Sider, Content } = Layout;
+const { Sider, Content, Header } = Layout;
 const { Text } = Typography;
 
 interface Session {
@@ -69,6 +71,7 @@ interface SessionStats {
 
 
 function App() {
+  const [activeMenu, setActiveMenu] = useState<'sessions' | 'errors'>('sessions');
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
@@ -179,6 +182,35 @@ function App() {
 
   return (
     <Layout style={{ height: '100vh' }}>
+      {/* 顶部导航 */}
+      <Header
+        style={{
+          background: '#fff',
+          borderBottom: '1px solid #f0f0f0',
+          padding: '0 16px',
+          display: 'flex',
+          alignItems: 'center',
+          height: 56,
+          lineHeight: '56px',
+        }}
+      >
+        <Typography.Text strong style={{ fontSize: 16, marginRight: 24 }}>
+          运动记录系统
+        </Typography.Text>
+        <Menu
+          mode="horizontal"
+          selectedKeys={[activeMenu]}
+          onClick={({ key }) => setActiveMenu(key as 'sessions' | 'errors')}
+          items={[
+            { key: 'sessions', label: '运动记录' },
+            { key: 'errors', label: '错误日志' },
+          ]}
+          style={{ flex: 1, minWidth: 0 }}
+        />
+      </Header>
+
+      {activeMenu === 'sessions' ? (
+        <Layout>
       {/* 左侧会话列表 */}
       <Sider
         width={360}
@@ -394,6 +426,10 @@ function App() {
           </div>
         )}
       </Content>
+        </Layout>
+      ) : (
+        <ErrorLogs />
+      )}
     </Layout>
   );
 }

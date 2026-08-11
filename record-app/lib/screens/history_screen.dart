@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/error_reporter.dart';
 import '../widgets/app_widgets.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -31,7 +32,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
       final api = context.read<ApiService>();
       final sessions = await api.getSessions();
       setState(() { _sessions = sessions; _loading = false; });
-    } catch (e) {
+    } catch (e, st) {
+      // 加载失败：上报异常，同时展示错误信息（不吞掉）
+      ErrorReporter.reportError(
+        message: '加载会话列表失败',
+        source: 'history_screen',
+        error: e,
+        stackTrace: st,
+        url: '/api/sessions',
+      );
       setState(() { _error = e.toString(); _loading = false; });
     }
   }
@@ -100,7 +109,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
       final dt = DateTime.parse(iso);
       return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} '
           '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-    } catch (_) { return iso; }
+    } catch (e, st) {
+      // 时间格式化失败属防御性回退，按 warning 上报
+      ErrorReporter.reportWarning(
+        message: '时间格式解析失败，原样展示',
+        source: 'history_screen',
+        error: e,
+        stackTrace: st,
+        context: {'raw': iso},
+      );
+      return iso;
+    }
   }
 }
 
@@ -130,7 +149,15 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
       final api = context.read<ApiService>();
       final data = await api.getSessionTrackPoints(widget.sessionId);
       setState(() { _points = List<Map<String, dynamic>>.from(data['points']); _loading = false; });
-    } catch (_) {
+    } catch (e, st) {
+      // 轨迹点加载失败：上报异常（不吞掉）
+      ErrorReporter.reportError(
+        message: '加载会话轨迹点失败',
+        source: 'history_screen',
+        error: e,
+        stackTrace: st,
+        url: '/api/sessions/${widget.sessionId}/track-points',
+      );
       setState(() => _loading = false);
     }
   }

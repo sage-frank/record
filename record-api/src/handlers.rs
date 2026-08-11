@@ -9,8 +9,8 @@ use uuid::Uuid;
 
 use crate::db::Database;
 use crate::models::{
-    BatchTrackPoints, DietRecordInput, ExercisePlanInput, TrackPointInput, UserProfile,
-    WeightRecordInput,
+    BatchTrackPoints, DietRecordInput, ErrorLogInput, ErrorLogQuery, ExercisePlanInput,
+    TrackPointInput, UserProfile, WeightRecordInput,
 };
 
 pub type AppState = std::sync::Arc<Database>;
@@ -267,6 +267,72 @@ pub async fn delete_plan(
     db.delete_plan(&id)
         .map_err(|e| internal_error("delete plan error", e))?;
     Ok(Json(serde_json::json!({"ok": true})))
+}
+
+// ── 异常日志模块 ──────────────────────────────────────
+
+/// POST /api/errors — App 上报异常日志（签名保护）
+pub async fn add_error_log(
+    State(db): State<AppState>,
+    Json(mut input): Json<ErrorLogInput>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if let Err(errors) = input.validate() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "validation failed", "details": errors})),
+        ));
+    }
+    input.truncate_stack_trace();
+    let log = db
+        .insert_error_log(&input)
+        .map_err(|e| internal_error("insert error log", e))?;
+    info!(
+        "error_log_ok id={} request_id={} level={} source={}",
+        log.id, log.request_id, log.level, log.source
+    );
+    Ok(Json(
+        serde_json::json!({"id": log.id, "request_id": log.request_id}),
+    ))
+}
+
+/// GET /api/errors — 查询异常日志（Web 端只读访问，签名中间件已放行）
+pub async fn get_error_logs(
+    State(db): State<AppState>,
+    Query(query): Query<ErrorLogQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let (logs, total) = db
+        .query_error_logs(&query)
+        .map_err(|e| internal_error("query error logs", e))?;
+    info!(
+        "error_logs_query page={} page_size={} total={} returned={}",
+        query.page,
+        query.page_size,
+        total,
+        logs.len()
+    );
+    Ok(Json(serde_json::json!({
+        "total": total,
+        "page": query.page.max(1),
+        "page_size": query.page_size.clamp(1, 100),
+        "logs": logs,
+    })))
+}
+
+/// GET /api/errors/:id — 异常日志详情
+pub async fn get_error_log_detail(
+    State(db): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let log = db
+        .get_error_log(id)
+        .map_err(|e| internal_error("get error log", e))?;
+    match log {
+        Some(log) => Ok(Json(serde_json::json!({"found": true, "log": log}))),
+        None => Ok(Json(serde_json::json!({
+            "found": false,
+            "message": "error log not found"
+        }))),
+    }
 }
 
 fn internal_error(

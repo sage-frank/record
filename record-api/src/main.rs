@@ -18,7 +18,7 @@ use tracing_subscriber::EnvFilter;
 
 use db::Database;
 use handlers::*;
-use signature::{signature_middleware, response_signature_middleware, SignatureState};
+use signature::{response_signature_middleware, signature_middleware, SignatureState};
 
 #[tokio::main]
 async fn main() {
@@ -27,7 +27,7 @@ async fn main() {
         UtcOffset::from_hms(8, 0, 0).expect("Invalid UTC offset"),
         format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"),
     );
-    
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
@@ -39,7 +39,7 @@ async fn main() {
     // 初始化数据库
     let database = Database::new("record.db").expect("Failed to init database");
     let db_state: AppState = Arc::new(database);
-    
+
     // 初始化签名状态
     let signature_state = SignatureState::new();
 
@@ -65,6 +65,11 @@ async fn main() {
                 method = %request.method(),
                 path = request.uri().path(),
                 query = request.uri().query().unwrap_or(""),
+                request_id = request
+                    .headers()
+                    .get("x-request-id")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or(""),
             )
         })
         .on_response(
@@ -102,8 +107,14 @@ async fn main() {
         .route("/api/diet-records/{id}", delete(delete_diet_record))
         .route("/api/plans", get(get_plans).post(add_plan))
         .route("/api/plans/{id}", put(update_plan).delete(delete_plan))
+        // 异常日志模块
+        .route("/api/errors", post(add_error_log).get(get_error_logs))
+        .route("/api/errors/{id}", get(get_error_log_detail))
         // 签名验证中间件 - 保护所有API路由
-        .layer(axum::middleware::from_fn_with_state(signature_state.clone(), signature_middleware))
+        .layer(axum::middleware::from_fn_with_state(
+            signature_state.clone(),
+            signature_middleware,
+        ))
         // 响应签名中间件 - 给响应添加签名头
         .layer(axum::middleware::from_fn(response_signature_middleware))
         .layer(cors)

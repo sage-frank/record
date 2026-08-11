@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../models/user_profile.dart';
 import '../theme/app_theme.dart';
+import '../utils/error_reporter.dart';
 import '../widgets/app_widgets.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -33,7 +34,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await storage.saveProfile(profile);
       if (!mounted) return;
       setState(() { _profile = profile; _loading = false; });
-    } catch (_) {
+    } catch (e, st) {
+      // 网络失败回退到本地缓存，但异常必须上报，不允许吞掉
+      ErrorReporter.reportError(
+        message: '加载个人档案失败，回退本地缓存',
+        source: 'profile_screen',
+        error: e,
+        stackTrace: st,
+        url: '/api/profile',
+      );
       final profile = await storage.loadProfile();
       if (!mounted) return;
       setState(() { _profile = profile; _loading = false; });
@@ -357,7 +366,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           await context.read<StorageService>().saveProfile(updated);
                           if (ctx.mounted) Navigator.pop(ctx);
                           _load();
-                        } catch (e) {
+                        } catch (e, st) {
+                          ErrorReporter.reportError(
+                            message: '保存个人档案失败',
+                            source: 'profile_screen',
+                            error: e,
+                            stackTrace: st,
+                            url: '/api/profile',
+                          );
                           if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
                         }
                       },
@@ -402,7 +418,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 await context.read<StorageService>().saveProfile(updated);
                 if (ctx.mounted) Navigator.pop(ctx);
                 _load();
-              } catch (e) {
+              } catch (e, st) {
+                ErrorReporter.reportError(
+                  message: '更新体重失败',
+                  source: 'profile_screen',
+                  error: e,
+                  stackTrace: st,
+                  url: '/api/weight-history',
+                );
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新失败: $e')));
               }
             },

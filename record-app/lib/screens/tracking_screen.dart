@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../models/run_result.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
+import '../utils/error_reporter.dart';
 import 'history_screen.dart';
 import 'run_summary_screen.dart';
 
@@ -73,7 +74,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
           }
         });
       }
-    } catch (e) {
+    } catch (e, st) {
+      ErrorReporter.reportError(
+        message: '启动跑步记录失败',
+        source: 'tracking_screen',
+        error: e,
+        stackTrace: st,
+      );
       if (!mounted) {
         return;
       }
@@ -132,7 +139,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
         context,
         MaterialPageRoute(builder: (_) => RunSummaryScreen(result: result)),
       );
-    } catch (e) {
+    } catch (e, st) {
+      ErrorReporter.reportError(
+        message: '结束并上传跑步记录失败',
+        source: 'tracking_screen',
+        error: e,
+        stackTrace: st,
+      );
       if (!mounted) {
         return;
       }

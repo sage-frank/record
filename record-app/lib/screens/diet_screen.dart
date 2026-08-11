@@ -9,6 +9,7 @@ import '../services/storage_service.dart';
 import '../models/diet_record.dart';
 import '../models/user_profile.dart';
 import '../theme/app_theme.dart';
+import '../utils/error_reporter.dart';
 import '../widgets/app_widgets.dart';
 
 class DietScreen extends StatefulWidget {
@@ -52,7 +53,15 @@ class _DietScreenState extends State<DietScreen> {
       await storage.saveProfile(profile);
       if (!mounted) return;
       setState(() { _records = records; _profile = profile; _loading = false; });
-    } catch (_) {
+    } catch (e, st) {
+      // 网络失败回退到本地缓存，但异常必须上报，不允许吞掉
+      ErrorReporter.reportError(
+        message: '加载饮食记录失败，回退本地缓存',
+        source: 'diet_screen',
+        error: e,
+        stackTrace: st,
+        url: '/api/diet-records',
+      );
       final records = await storage.loadDietRecords();
       final profile = await storage.loadProfile();
       if (!mounted) return;
@@ -303,7 +312,16 @@ class _DietScreenState extends State<DietScreen> {
     final storage = context.read<StorageService>();
     try {
       await api.deleteDietRecord(id);
-    } catch (_) {
+    } catch (e, st) {
+      // 服务器删除失败：上报异常并回退到本地删除
+      ErrorReporter.reportError(
+        message: '删除饮食记录失败，回退本地删除',
+        source: 'diet_screen',
+        error: e,
+        stackTrace: st,
+        url: '/api/diet-records/$id',
+        context: {'record_id': id},
+      );
       await storage.deleteDietRecord(id);
     }
     await _load();
@@ -445,7 +463,15 @@ class _DietScreenState extends State<DietScreen> {
                           await context.read<StorageService>().addDietRecord(record);
                           if (ctx.mounted) Navigator.pop(ctx);
                           await _load();
-                        } catch (e) {
+                        } catch (e, st) {
+                          // 保存失败：上报异常后仍需提示用户
+                          ErrorReporter.reportError(
+                            message: '添加饮食记录失败',
+                            source: 'diet_screen',
+                            error: e,
+                            stackTrace: st,
+                            url: '/api/diet-records',
+                          );
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
                           }

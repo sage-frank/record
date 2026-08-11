@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../models/exercise_plan.dart';
 import '../theme/app_theme.dart';
+import '../utils/error_reporter.dart';
 import '../widgets/app_widgets.dart';
 import 'tracking_screen.dart';
 import 'history_screen.dart';
@@ -48,7 +49,15 @@ class _RunScreenState extends State<RunScreen> with SingleTickerProviderStateMix
       await storage.savePlans(plans);
       if (!mounted) return;
       setState(() { _plans = plans; _sessions = sessions; _loading = false; });
-    } catch (_) {
+    } catch (e, st) {
+      // 网络失败回退到本地缓存，但异常必须上报，不允许吞掉
+      ErrorReporter.reportError(
+        message: '加载运动计划失败，回退本地缓存',
+        source: 'run_screen',
+        error: e,
+        stackTrace: st,
+        url: '/api/plans',
+      );
       final plans = await storage.loadPlans();
       if (!mounted) return;
       setState(() { _plans = plans; _sessions = []; _loading = false; });
@@ -345,7 +354,17 @@ class _RunScreenState extends State<RunScreen> with SingleTickerProviderStateMix
   String _formatDate(String iso) {
     try {
       return DateFormat('MM-dd HH:mm').format(DateTime.parse(iso));
-    } catch (_) { return iso; }
+    } catch (e, st) {
+      // 时间格式化失败属防御性回退，按 warning 上报
+      ErrorReporter.reportWarning(
+        message: '时间格式解析失败，原样展示',
+        source: 'run_screen',
+        error: e,
+        stackTrace: st,
+        context: {'raw': iso},
+      );
+      return iso;
+    }
   }
 
   Future<bool?> _confirmDelete() => showDialog<bool>(
@@ -368,7 +387,14 @@ class _RunScreenState extends State<RunScreen> with SingleTickerProviderStateMix
     try {
       await context.read<ApiService>().deleteSession(id);
       await _load();
-    } catch (e) {
+    } catch (e, st) {
+      ErrorReporter.reportError(
+        message: '删除运动记录失败',
+        source: 'run_screen',
+        error: e,
+        stackTrace: st,
+        url: '/api/sessions/$id',
+      );
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('删除失败: $e')));
     }
   }
@@ -386,7 +412,14 @@ class _RunScreenState extends State<RunScreen> with SingleTickerProviderStateMix
       await api.updatePlan(plan.id, updated.toApiJson());
       await storage.savePlans(_plans.map((p) => p.id == plan.id ? updated : p).toList());
       await _load();
-    } catch (e) {
+    } catch (e, st) {
+      ErrorReporter.reportError(
+        message: '更新运动计划失败',
+        source: 'run_screen',
+        error: e,
+        stackTrace: st,
+        url: '/api/plans/${plan.id}',
+      );
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新失败: $e')));
     }
   }
@@ -468,7 +501,14 @@ class _RunScreenState extends State<RunScreen> with SingleTickerProviderStateMix
                           await context.read<StorageService>().savePlans(_plans);
                           if (ctx.mounted) Navigator.pop(ctx);
                           _load();
-                        } catch (e) {
+                        } catch (e, st) {
+                          ErrorReporter.reportError(
+                            message: '添加运动计划失败',
+                            source: 'run_screen',
+                            error: e,
+                            stackTrace: st,
+                            url: '/api/plans',
+                          );
                           if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
                         }
                       },
