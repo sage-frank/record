@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:intl/intl.dart';
 import 'package:pedometer/pedometer.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
@@ -33,7 +34,8 @@ class TrackPoint {
     if (altitude != null) 'altitude': altitude,
     if (speed != null) 'speed': speed,
     'steps': steps,
-    'timestamp': timestamp.toIso8601String(),
+    // 全端统一日期格式：yyyy-MM-dd HH:mm:ss
+    'timestamp': DateFormat('yyyy-MM-dd HH:mm:ss').format(timestamp),
   };
 }
 

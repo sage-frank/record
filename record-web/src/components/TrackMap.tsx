@@ -141,6 +141,14 @@ function fmtDuration(secs: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
+/**
+ * 解析全端统一格式 yyyy-MM-dd HH:mm:ss 为毫秒时间戳。
+ * 先转为标准 ISO（T 分隔）再 parse，避免不同浏览器对空格格式解析不一致。
+ */
+function parseTimestamp(ts: string): number {
+  return Date.parse(ts.replace(' ', 'T'));
+}
+
 /** 配速 → mm:ss/km */
 function fmtPace(minPerKm: number): string {
   if (!isFinite(minPerKm) || minPerKm <= 0) return '--:--';
@@ -228,8 +236,8 @@ export default function TrackMap({ points, showLiveStats, sessionStats }: Props)
     }
     const first = points[0];
     const last = points[points.length - 1];
-    const t0 = Date.parse(first.timestamp);
-    const t1 = Date.parse(last.timestamp);
+    const t0 = parseTimestamp(first.timestamp);
+    const t1 = parseTimestamp(last.timestamp);
     const secs = isFinite(t0) && isFinite(t1) && t1 > t0 ? (t1 - t0) / 1000 : 0;
     const totalSteps = points.reduce((s, p) => s + (p.steps ?? 0), 0);
     return {

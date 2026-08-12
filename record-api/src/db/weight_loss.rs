@@ -76,10 +76,15 @@ impl Database {
         let conn = self.lock()?;
         let sql = "SELECT id, date, meal_type, food_name, calories, protein_g, carbs_g, fat_g, created_at FROM diet_records";
         if let Some(d) = date {
-            let mut stmt =
-                conn.prepare(&format!("{sql} WHERE date = ?1 ORDER BY created_at DESC"))?;
+            // 按日期前缀匹配：兼容带时间戳的旧数据（如 2026-08-12T10:55:05）与纯日期新数据
+            // 按天范围查询：>= 当天 00:00:00 且 <= 当天 23:59:59（字符串比较与时序一致）
+            let start = format!("{d} 00:00:00");
+            let end = format!("{d} 23:59:59");
+            let mut stmt = conn.prepare(&format!(
+                "{sql} WHERE date >= ?1 AND date <= ?2 ORDER BY created_at DESC"
+            ))?;
             return Ok(stmt
-                .query_map([d], |row| {
+                .query_map(rusqlite::params![start, end], |row| {
                     Ok(DietRecord {
                         id: row.get(0)?,
                         date: row.get(1)?,
