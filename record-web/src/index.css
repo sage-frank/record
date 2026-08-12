@@ -14,3 +14,441 @@ html, body, #root {
   width: 100%;
   border-radius: 8px;
 }
+
+/* ════════════════════════════════════════════════════════
+   TrackMap 双主题（方案 A 暗色沉浸 / 方案 B 浅色精致）
+   主题变量定义在 .trackmap（默认暗色），浅色在 .trackmap--light 覆盖
+   ════════════════════════════════════════════════════════ */
+
+.trackmap {
+  /* ── 主题变量：暗色沉浸（方案 A，默认） ── */
+  --tm-bg: #0b1220;
+  --tm-border: rgba(148, 163, 184, 0.12);
+  --tm-glow: #22d3ee;                    /* 轨迹光晕 / 默认段色 */
+  --tm-glow-opacity: 0.16;
+  --tm-arrow: #a5f3fc;                   /* 方向箭头 */
+  --tm-mid: #22d3ee;                     /* 采样点 */
+  --tm-curve: #22d3ee;                   /* 迷你速度曲线 */
+  --tm-panel-bg: rgba(13, 20, 38, 0.72); /* 浮层 / 控件面板 */
+  --tm-panel-border: rgba(148, 163, 184, 0.14);
+  --tm-control-bg: rgba(15, 23, 42, 0.85);
+  --tm-control-hover: rgba(34, 211, 238, 0.18);
+  --tm-control-color: #e2e8f0;
+  --tm-control-color-hover: #22d3ee;
+  --tm-text: #e2e8f0;
+  --tm-text-dim: #94a3b8;
+  --tm-text-strong: #f1f5f9;
+  --tm-live: #7dd3fc;
+  --tm-live-dot: #22d3ee;
+  --tm-active-text: #06121f;
+  --tm-active-bg: linear-gradient(135deg, #22d3ee, #4ade80);
+  --tm-attr-bg: rgba(10, 16, 32, 0.55);
+  --tm-popup-bg: rgba(15, 23, 42, 0.92);
+  --tm-popup-close: #94a3b8;
+  --tm-start: linear-gradient(135deg, #34d399, #0ea5e9);
+  --tm-start-shadow: rgba(52, 211, 153, 0.8);
+  --tm-end: linear-gradient(135deg, #fb7185, #f59e0b);
+  --tm-end-shadow: rgba(251, 113, 133, 0.85);
+  --tm-shadow: rgba(0, 0, 0, 0.35);
+  --tm-tile-filter: none;
+  --tm-shade: none;
+
+  position: relative;
+  height: 100%;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--tm-bg);
+  border: 1px solid var(--tm-border);
+  box-shadow: 0 12px 32px rgba(2, 8, 23, 0.35);
+  animation: tm-fade-in 0.45s ease both;
+}
+
+/* ── 浅色精致（方案 B） ── */
+
+.trackmap--light {
+  --tm-bg: #f8fafc;
+  --tm-border: rgba(15, 23, 42, 0.08);
+  --tm-glow: #3b82f6;
+  --tm-glow-opacity: 0.12;
+  --tm-arrow: #1e40af;
+  --tm-mid: #3b82f6;
+  --tm-curve: #3b82f6;
+  --tm-panel-bg: rgba(255, 255, 255, 0.86);
+  --tm-panel-border: rgba(15, 23, 42, 0.08);
+  --tm-control-bg: rgba(255, 255, 255, 0.9);
+  --tm-control-hover: rgba(37, 99, 235, 0.12);
+  --tm-control-color: #334155;
+  --tm-control-color-hover: #2563eb;
+  --tm-text: #334155;
+  --tm-text-dim: #94a3b8;
+  --tm-text-strong: #0f172a;
+  --tm-live: #2563eb;
+  --tm-live-dot: #3b82f6;
+  --tm-active-text: #ffffff;
+  --tm-active-bg: linear-gradient(135deg, #2563eb, #0891b2);
+  --tm-attr-bg: rgba(255, 255, 255, 0.75);
+  --tm-popup-bg: rgba(255, 255, 255, 0.95);
+  --tm-popup-close: #64748b;
+  --tm-start: linear-gradient(135deg, #059669, #0284c7);
+  --tm-start-shadow: rgba(5, 150, 105, 0.55);
+  --tm-end: linear-gradient(135deg, #e11d48, #d97706);
+  --tm-end-shadow: rgba(225, 29, 72, 0.55);
+  --tm-shadow: rgba(15, 23, 42, 0.12);
+}
+
+.trackmap .leaflet-container {
+  background: var(--tm-bg);
+  border-radius: 12px;
+}
+
+@keyframes tm-fade-in {
+  from { opacity: 0; transform: scale(1.012); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* ── 深色滤镜回退模式（CartoDB 不可达时） ── */
+
+.trackmap--filtered .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.8) contrast(0.95) saturate(0.55);
+}
+
+.trackmap--filtered::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 450;
+  background: linear-gradient(rgba(10, 16, 32, 0.18), rgba(10, 16, 32, 0.32));
+}
+
+/* ── 缩放控件 ── */
+
+.trackmap .leaflet-control-zoom {
+  border: none;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px var(--tm-shadow);
+}
+
+.trackmap .leaflet-control-zoom a {
+  width: 30px;
+  height: 30px;
+  line-height: 30px;
+  font-size: 15px;
+  color: var(--tm-control-color);
+  background: var(--tm-control-bg);
+  border-bottom: 1px solid var(--tm-panel-border);
+  backdrop-filter: blur(8px);
+  transition: background 0.15s, color 0.15s;
+}
+
+.trackmap .leaflet-control-zoom a:hover {
+  background: var(--tm-control-hover);
+  color: var(--tm-control-color-hover);
+}
+
+.trackmap .leaflet-control-zoom a:last-child {
+  border-bottom: none;
+}
+
+/* ── attribution ── */
+
+.trackmap .leaflet-control-attribution {
+  background: var(--tm-attr-bg);
+  color: var(--tm-text-dim);
+  font-size: 10px;
+  backdrop-filter: blur(6px);
+}
+
+.trackmap .leaflet-control-attribution a {
+  color: var(--tm-live);
+}
+
+/* ── Popup ── */
+
+.trackmap .leaflet-popup-content-wrapper,
+.trackmap .leaflet-popup-tip {
+  background: var(--tm-popup-bg);
+  color: var(--tm-text);
+  box-shadow: 0 8px 24px var(--tm-shadow);
+  backdrop-filter: blur(10px);
+}
+
+.trackmap .leaflet-popup-content {
+  margin: 10px 14px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.trackmap .leaflet-popup-close-button {
+  color: var(--tm-popup-close) !important;
+}
+
+/* ── 轨迹流动虚线动画 ── */
+
+.track-flow {
+  animation: tm-flow 1.4s linear infinite;
+}
+
+@keyframes tm-flow {
+  to { stroke-dashoffset: -16; }
+}
+
+/* ── 起点 / 终点标记 ── */
+
+.tm-marker {
+  background: none !important;
+  border: none !important;
+}
+
+.tm-dot {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 扩散光环（pulse） */
+.tm-dot::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: inherit;
+  opacity: 0.5;
+  animation: tm-pulse 2s ease-out infinite;
+}
+
+.tm-dot--end::before {
+  animation-delay: 0.6s;
+}
+
+.tm-dot__core {
+  position: relative;
+  width: 60%;
+  height: 60%;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.tm-dot--start {
+  background: var(--tm-start);
+  box-shadow: 0 0 12px var(--tm-start-shadow);
+}
+
+.tm-dot--end {
+  background: var(--tm-end);
+  box-shadow: 0 0 14px var(--tm-end-shadow);
+}
+
+@keyframes tm-pulse {
+  0% { transform: scale(1); opacity: 0.55; }
+  70% { transform: scale(2.8); opacity: 0; }
+  100% { opacity: 0; }
+}
+
+/* 方向箭头 */
+.tm-arrow {
+  background: none !important;
+  border: none !important;
+  filter: drop-shadow(0 0 4px var(--tm-glow));
+}
+
+.tm-arrow path {
+  fill: var(--tm-arrow);
+  stroke: var(--tm-bg);
+  stroke-width: 1.2;
+}
+
+/* 中间采样点 */
+.tm-mid {
+  background: none !important;
+  border: none !important;
+}
+
+.tm-mid span {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tm-mid);
+  border: 1px solid var(--tm-bg);
+  box-shadow: 0 0 6px var(--tm-glow);
+}
+
+/* ── 空态 ── */
+
+.trackmap__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 900;
+  pointer-events: none;
+}
+
+.trackmap__empty span {
+  padding: 10px 22px;
+  border-radius: 999px;
+  background: var(--tm-panel-bg);
+  border: 1px solid var(--tm-panel-border);
+  color: var(--tm-text-dim);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  backdrop-filter: blur(10px);
+}
+
+/* ── 统计浮层（玻璃拟态） ── */
+
+.trackmap__stats {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  min-width: 232px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--tm-panel-bg);
+  border: 1px solid var(--tm-panel-border);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 30px var(--tm-shadow);
+  color: var(--tm-text);
+}
+
+.trackmap__live {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--tm-text-dim);
+}
+
+.trackmap__live::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tm-text-dim);
+}
+
+.trackmap__live.is-live {
+  color: var(--tm-live);
+}
+
+.trackmap__live.is-live::before {
+  background: var(--tm-live-dot);
+  animation: tm-blink 1.6s infinite;
+}
+
+@keyframes tm-blink {
+  0% { box-shadow: 0 0 0 0 var(--tm-live-dot); }
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.trackmap__stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+  margin-top: 12px;
+}
+
+.trackmap__stats-grid em {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--tm-text-dim);
+  margin-bottom: 2px;
+}
+
+.trackmap__stats-grid strong {
+  font-size: 19px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--tm-text-strong);
+  font-family: 'SF Mono', ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+
+.trackmap__stats-grid i {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--tm-text-dim);
+  margin-left: 3px;
+}
+
+/* 迷你速度曲线 */
+.trackmap__curve {
+  width: 100%;
+  height: 44px;
+  margin-top: 12px;
+  border-radius: 8px;
+  background: var(--tm-control-bg);
+}
+
+.trackmap__curve polyline {
+  stroke: var(--tm-curve);
+}
+
+.trackmap__curve polygon {
+  fill: var(--tm-curve);
+  fill-opacity: 0.14;
+}
+
+/* ── 左下角控制台：主题 + 底图 ── */
+
+.trackmap__controls {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--tm-panel-bg);
+  border: 1px solid var(--tm-panel-border);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px var(--tm-shadow);
+}
+
+.trackmap__group {
+  display: flex;
+  gap: 3px;
+}
+
+.trackmap__group-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--tm-panel-border);
+}
+
+.trackmap__group button {
+  border: none;
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--tm-text-dim);
+  background: transparent;
+  transition: background 0.15s, color 0.15s;
+}
+
+.trackmap__group button:hover {
+  color: var(--tm-text);
+  background: var(--tm-control-hover);
+}
+
+.trackmap__group button.is-active {
+  color: var(--tm-active-text);
+  background: var(--tm-active-bg);
+  font-weight: 600;
+}

@@ -18,6 +18,13 @@ sha2 = "0.10"
 hex = "0.4"
 rand = "0.8"
 time = { version = "0.3", features = ["macros"] }
+thiserror = "2"
+
+
+[lints.clippy]
+redundant_clone = "warn"
+large_enum_variant = "warn"
+needless_collect = "warn"
 
 
 [profile.dev]

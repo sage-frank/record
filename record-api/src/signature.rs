@@ -29,11 +29,15 @@ impl SignatureState {
     }
 
     pub fn is_nonce_used(&self, nonce: &str) -> bool {
-        self.used_nonces.lock().unwrap().contains(nonce)
+        // 锁被污染（panic 残留）时恢复使用，避免认证链路 panic
+        self.used_nonces
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(nonce)
     }
 
     pub fn mark_nonce_used(&self, nonce: String) {
-        let mut nonces = self.used_nonces.lock().unwrap();
+        let mut nonces = self.used_nonces.lock().unwrap_or_else(|e| e.into_inner());
         nonces.insert(nonce);
 
         if nonces.len() > 1000 {
@@ -46,27 +50,21 @@ impl SignatureState {
     }
 }
 
-#[derive(Debug)]
+/// 签名校验错误：thiserror 推导 Display，认证语义与响应状态码不变
+#[derive(Debug, thiserror::Error)]
 pub enum SignatureError {
+    #[error("Missing required signature headers")]
     MissingHeaders,
+    #[error("Timestamp expired or invalid")]
     InvalidTimestamp,
+    #[error("Invalid app key")]
     InvalidAppKey,
+    #[error("Replay attack detected")]
     DuplicateNonce,
+    #[error("Signature verification failed")]
     InvalidSignature,
+    #[error("Parse Error: {0}")]
     ParseError(String),
-}
-
-impl std::fmt::Display for SignatureError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SignatureError::MissingHeaders => write!(f, "Missing required signature headers"),
-            SignatureError::InvalidTimestamp => write!(f, "Timestamp expired or invalid"),
-            SignatureError::InvalidAppKey => write!(f, "Invalid app key"),
-            SignatureError::DuplicateNonce => write!(f, "Replay attack detected"),
-            SignatureError::InvalidSignature => write!(f, "Signature verification failed"),
-            SignatureError::ParseError(msg) => write!(f, "Parse Error: {}", msg),
-        }
-    }
 }
 
 impl IntoResponse for SignatureError {
@@ -147,13 +145,13 @@ pub async fn signature_middleware(
 ) -> Result<Response, SignatureError> {
     let path = req.uri().path();
 
-    // Skip signature verification for debug endpoints and health checks
+    // 只读接口放行签名：GET 无副作用，Web 端（无签名实现）查询使用；
+    // 写操作（POST/PUT/DELETE）保留签名校验，App 端均携带签名不受影响。
     if path.starts_with("/debug") || path == "/" {
         return Ok(next.run(req).await);
     }
 
-    // Web 端只读查询异常日志无需签名（GET /api/errors 及详情）
-    if req.method() == axum::http::Method::GET && path.starts_with("/api/errors") {
+    if req.method() == axum::http::Method::GET {
         return Ok(next.run(req).await);
     }
 

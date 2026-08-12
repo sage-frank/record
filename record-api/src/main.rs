@@ -1,4 +1,5 @@
 mod db;
+mod error;
 mod handlers;
 mod models;
 mod signature;
@@ -36,7 +37,7 @@ async fn main() {
         .with_timer(timer)
         .init();
 
-    // 初始化数据库
+    // 初始化数据库（自动创建表结构）
     let database = Database::new("record.db").expect("Failed to init database");
     let db_state: AppState = Arc::new(database);
 
@@ -110,7 +111,7 @@ async fn main() {
         // 异常日志模块
         .route("/api/errors", post(add_error_log).get(get_error_logs))
         .route("/api/errors/{id}", get(get_error_log_detail))
-        // 签名验证中间件 - 保护所有API路由
+        // 签名验证中间件 - 保护所有API路由（GET 只读放行）
         .layer(axum::middleware::from_fn_with_state(
             signature_state.clone(),
             signature_middleware,

@@ -20,10 +20,10 @@ import {
 } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs, { Dayjs } from 'dayjs';
+import { API_BASE_URL } from '../config';
 
-// API 基础地址：与 App.tsx 保持一致
 const api = axios.create({
-  baseURL: 'http://39.105.113.213:3001',
+  baseURL: API_BASE_URL,
   timeout: 15000,
 });
 
@@ -104,7 +104,7 @@ function ErrorLogs() {
           .slice(0, 19)
           .replace('T', ' ');
       }
-      const res = await api.get('/api/errors', { params });
+      const res = await api.get('/errors', { params });
       setLogs(res.data.logs || []);
       setTotal(res.data.total || 0);
     } catch (e) {
