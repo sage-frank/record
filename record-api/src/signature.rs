@@ -5,10 +5,10 @@ use axum::{
 };
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::{info, warn};
+use tracing::{debug, warn};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -16,41 +16,48 @@ const APP_KEY: &str = "record_app_v2";
 const SECRET_KEY: &str = "5K8m#9cN@rP2xV7y";
 const TIMESTAMP_THRESHOLD_SECONDS: u64 = 300; // 5 minutes
 
+/// 请求体大小上限（防恶意超大 body 打爆内存）
+const MAX_BODY_BYTES: usize = 32 * 1024 * 1024;
+
+/// 防重放 nonce 队列最大长度（超限时按时间驱逐最旧的）
+const MAX_NONCES: usize = 1000;
+
+/// 签名状态：按 (时间戳, nonce) 有序记录已使用的 nonce，
+/// 驱逐时从队头（最旧）开始，避免随机驱逐导致 5 分钟窗口内 nonce 可被重放。
 #[derive(Clone)]
 pub struct SignatureState {
-    used_nonces: Arc<Mutex<HashSet<String>>>,
+    used_nonces: Arc<Mutex<VecDeque<(u64, String)>>>,
 }
 
 impl SignatureState {
     pub fn new() -> Self {
         Self {
-            used_nonces: Arc::new(Mutex::new(HashSet::new())),
+            used_nonces: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 
-    pub fn is_nonce_used(&self, nonce: &str) -> bool {
-        // 锁被污染（panic 残留）时恢复使用，避免认证链路 panic
-        self.used_nonces
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .contains(nonce)
-    }
-
-    pub fn mark_nonce_used(&self, nonce: String) {
+    /// 原子标记 nonce 为已使用（锁内查重 + 插入 + 驱逐）。
+    /// 返回 false 表示该 nonce 已被使用（重放攻击）。
+    pub fn mark_nonce_used(&self, nonce: String, timestamp: u64) -> bool {
         let mut nonces = self.used_nonces.lock().unwrap_or_else(|e| e.into_inner());
-        nonces.insert(nonce);
-
-        if nonces.len() > 1000 {
-            let to_remove = nonces.len() - 500;
-            let remove_keys: Vec<String> = nonces.iter().take(to_remove).cloned().collect();
-            for key in remove_keys {
-                nonces.remove(&key);
+        if nonces.iter().any(|(_, n)| n == &nonce) {
+            return false;
+        }
+        nonces.push_back((timestamp, nonce));
+        // 驱逐过期（超出 5 分钟窗口）与超量的 nonce，队头即最旧
+        let cutoff = timestamp.saturating_sub(TIMESTAMP_THRESHOLD_SECONDS);
+        while let Some((ts, _)) = nonces.front() {
+            if *ts < cutoff || nonces.len() > MAX_NONCES {
+                nonces.pop_front();
+            } else {
+                break;
             }
         }
+        true
     }
 }
 
-/// 签名校验错误：thiserror 推导 Display，认证语义与响应状态码不变
+/// 签名校验错误：认证语义与响应状态码与重构前一致
 #[derive(Debug, thiserror::Error)]
 pub enum SignatureError {
     #[error("Missing required signature headers")]
@@ -65,6 +72,8 @@ pub enum SignatureError {
     InvalidSignature,
     #[error("Parse Error: {0}")]
     ParseError(String),
+    #[error("Request body too large")]
+    PayloadTooLarge,
 }
 
 impl IntoResponse for SignatureError {
@@ -72,6 +81,7 @@ impl IntoResponse for SignatureError {
         let status = match self {
             SignatureError::DuplicateNonce => StatusCode::FORBIDDEN,
             SignatureError::InvalidSignature => StatusCode::UNAUTHORIZED,
+            SignatureError::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             _ => StatusCode::BAD_REQUEST,
         };
 
@@ -102,14 +112,14 @@ pub fn verify_signature(
     mac.verify_slice(&signature_bytes.unwrap()).is_ok()
 }
 
-/// 生成body hash
+/// 生成 body hash
 pub fn hash_body(body: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(body);
     hex::encode(hasher.finalize())
 }
 
-/// 生成随机nonce
+/// 生成随机 nonce（保留给客户端/调试使用）
 #[allow(dead_code)]
 pub fn generate_nonce() -> String {
     use rand::Rng;
@@ -124,26 +134,18 @@ pub fn generate_nonce() -> String {
         .collect()
 }
 
-/// 生成响应签名
-pub fn generate_response_signature(body: &str, timestamp: u64, nonce: &str) -> String {
-    let body_hash = hash_body(body.as_bytes());
-    let sign_string = format!("RESPONSE|/api|{}|{}|{}", timestamp, nonce, body_hash);
-
-    let mut mac =
-        HmacSha256::new_from_slice(SECRET_KEY.as_bytes()).expect("HMAC can take key of any size");
-    mac.update(sign_string.as_bytes());
-
-    hex::encode(mac.finalize().into_bytes())
-}
-
-/// 签名验证中间件
+/// 签名验证中间件：
+/// 1. 校验头完整性 / app key / 时间戳；
+/// 2. 读取请求体（限制大小）计算 body hash；
+/// 3. 验证 HMAC 签名；
+/// 4. 签名通过后才原子标记 nonce（防无效请求污染防重放池）。
 pub async fn signature_middleware(
     State(signature_state): State<SignatureState>,
     headers: HeaderMap,
     req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Result<Response, SignatureError> {
-    let path = req.uri().path();
+    let path = req.uri().path().to_string();
 
     // 只读接口放行签名：GET 无副作用，Web 端（无签名实现）查询使用；
     // 写操作（POST/PUT/DELETE）保留签名校验，App 端均携带签名不受影响。
@@ -155,58 +157,35 @@ pub async fn signature_middleware(
         return Ok(next.run(req).await);
     }
 
-    // 提取签名头 - 添加调试日志
+    // 提取签名头
     let signature = headers
         .get("x-signature")
         .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| {
-            warn!(
-                "🔍 [DEBUG] Missing x-signature header. All headers: {:?}",
-                headers
-            );
-            SignatureError::MissingHeaders
-        })?;
+        .ok_or(SignatureError::MissingHeaders)?;
 
     let timestamp = headers
         .get("x-timestamp")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<u64>().ok())
-        .ok_or_else(|| {
-            warn!("🔍 [DEBUG] Missing or invalid x-timestamp header");
-            SignatureError::MissingHeaders
-        })?;
+        .ok_or(SignatureError::MissingHeaders)?;
 
     let nonce = headers
         .get("x-nonce")
         .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| {
-            warn!("🔍 [DEBUG] Missing x-nonce header");
-            SignatureError::MissingHeaders
-        })?;
+        .ok_or(SignatureError::MissingHeaders)?;
 
     let app_key = headers
         .get("x-app-key")
         .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| {
-            warn!("🔍 [DEBUG] Missing x-app-key header");
-            SignatureError::MissingHeaders
-        })?;
+        .ok_or(SignatureError::MissingHeaders)?;
 
-    // 输出详细的签名调试信息
-    info!("🔍 [SIGNATURE DEBUG] {} {}", req.method(), path);
-    info!("  📋 Headers:");
-    info!("    x-signature: {}", signature);
-    info!("    x-timestamp: {}", timestamp);
-    info!("    x-nonce: {}", nonce);
-    info!("    x-app-key: {}", app_key);
-
-    // 验证App Key
+    // 校验 App Key
     if app_key != APP_KEY {
         warn!("Invalid app key: {}", app_key);
         return Err(SignatureError::InvalidAppKey);
     }
 
-    // 验证时间戳
+    // 校验时间戳（防过期重放）
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| SignatureError::InvalidTimestamp)?;
@@ -220,108 +199,49 @@ pub async fn signature_middleware(
         return Err(SignatureError::InvalidTimestamp);
     }
 
-    // 检查重放攻击
-    if signature_state.is_nonce_used(nonce) {
-        warn!("Duplicate nonce detected: {}", nonce);
-        return Err(SignatureError::DuplicateNonce);
+    // 读取请求体（限制大小，防内存 DoS）
+    // 先按 Content-Length 预检，超限直接 413，避免读取大 body 浪费内存
+    if let Some(len) = headers
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<usize>().ok())
+    {
+        if len > MAX_BODY_BYTES {
+            return Err(SignatureError::PayloadTooLarge);
+        }
     }
-
-    // 标记Nonce为已使用
-    signature_state.mark_nonce_used(nonce.to_string());
-
-    // 验证签名
-    let method_str = req.method().as_str().to_string(); // 克隆method字符串
-    let path_str = path.to_string(); // 克隆path字符串以便后续使用
-                                     // 读取请求体来计算正确的body hash
     let (parts, body) = req.into_parts();
-    let body_bytes = axum::body::to_bytes(body, usize::MAX)
+    let body_bytes = axum::body::to_bytes(body, MAX_BODY_BYTES)
         .await
-        .map_err(|_| SignatureError::ParseError("Failed to read request body".to_string()))?;
+        .map_err(|e| SignatureError::ParseError(format!("Failed to read request body: {e}")))?;
+    if body_bytes.len() > MAX_BODY_BYTES {
+        return Err(SignatureError::PayloadTooLarge);
+    }
     let body_hash = hash_body(&body_bytes);
 
-    // 输出签名验证的详细信息
-    info!("  📝 Body Hash: {}", body_hash);
-    info!(
-        "  🔐 Expected Sign String: {}|{}|{}|{}|{}",
-        method_str, path_str, timestamp, nonce, body_hash
-    );
-
-    // 重新构建请求以便后续处理
+    // 重新构建请求
     let req = axum::extract::Request::from_parts(parts, axum::body::Body::from(body_bytes));
 
+    // 验证签名
     if !verify_signature(
-        &method_str,
-        &path_str,
+        req.method().as_str(),
+        &path,
         timestamp,
         nonce,
         &body_hash,
         signature,
     ) {
-        warn!("❌ [SIGNATURE FAILED] {} {}", method_str, path_str);
-        warn!("  Provided Signature: {}", signature);
-        // 计算期望的签名用于调试
-        let sign_string = format!(
-            "{}|{}|{}|{}|{}",
-            method_str, path_str, timestamp, nonce, body_hash
-        );
-        warn!("  Sign String: {}", sign_string);
+        warn!("Signature verification failed: {} {}", req.method(), path);
         return Err(SignatureError::InvalidSignature);
     }
 
-    info!("✅ [SIGNATURE OK] {} {}", method_str, path_str);
-
-    // 签名验证通过，继续处理请求
-    Ok(next.run(req).await)
-}
-
-/// 响应签名中间件 - 给所有成功响应添加签名头
-pub async fn response_signature_middleware(
-    req: axum::extract::Request,
-    next: axum::middleware::Next,
-) -> axum::http::Response<axum::body::Body> {
-    let mut response = next.run(req).await;
-
-    // 只对 200 响应添加签名
-    if response.status().as_u16() == 200 {
-        use rand::Rng;
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        // 生成新的 nonce 用于响应
-        const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        let mut rng = rand::thread_rng();
-        let nonce: String = (0..16)
-            .map(|_| {
-                let idx = rng.gen_range(0..CHARSET.len());
-                CHARSET[idx] as char
-            })
-            .collect();
-
-        // 获取响应体（注意：这里我们无法直接读取已经发送的响应体）
-        // 所以我们需要一个 workaround：使用空 body hash 或者在 handler 层面处理
-
-        // 由于无法读取流式响应的 body，我们暂时使用固定的签名方式
-        // 实际生产环境应该使用 Body layer 来拦截和修改响应
-        let signature = generate_response_signature("", timestamp, &nonce);
-
-        if let Ok(sig_value) = signature.parse::<axum::http::HeaderValue>() {
-            response
-                .headers_mut()
-                .insert("x-server-signature", sig_value);
-        }
-        if let Ok(ts_value) = timestamp.to_string().parse::<axum::http::HeaderValue>() {
-            response.headers_mut().insert("x-timestamp", ts_value);
-        }
-        if let Ok(nonce_value) = nonce.parse::<axum::http::HeaderValue>() {
-            response.headers_mut().insert("x-nonce", nonce_value);
-        }
-
-        info!("📤 Added response signature headers");
+    // 签名验证通过后才标记 nonce（原子防重放）
+    if !signature_state.mark_nonce_used(nonce.to_string(), timestamp) {
+        warn!("Duplicate nonce detected: {}", nonce);
+        return Err(SignatureError::DuplicateNonce);
     }
 
-    response
+    debug!("Signature OK: {} {}", req.method(), path);
+
+    Ok(next.run(req).await)
 }

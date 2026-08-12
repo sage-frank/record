@@ -1,11 +1,11 @@
 use axum::{extract::State, Json};
-use tracing::info;
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::error::{validation_err, AppError};
 use crate::models::{BatchTrackPoints, TrackPointInput};
 
-use super::AppState;
+use super::{blocking, AppState};
 
 /// POST /api/track-points
 pub async fn add_track_point(
@@ -18,11 +18,16 @@ pub async fn add_track_point(
         .clone()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| Uuid::new_v4().to_string());
-    info!(
+    debug!(
         "track_point session={session_id} lat={} lng={} speed={:?} steps={:?}",
         input.latitude, input.longitude, input.speed, input.steps
     );
-    let point = db.insert_track_point(&session_id, &input)?;
+    let point = blocking({
+        let db = db.clone();
+        let session_id = session_id.clone();
+        move || db.insert_track_point(&session_id, &input)
+    })
+    .await?;
     Ok(Json(
         serde_json::json!({"session_id": point.session_id, "point": point}),
     ))
@@ -50,12 +55,17 @@ pub async fn add_track_points_batch(
     } else {
         batch.session_id.clone()
     };
-    info!(
+    debug!(
         "track_points_batch session={session_id} count={}",
         batch.points.len()
     );
-    let points = db.insert_track_points_batch(&session_id, &batch.points)?;
-    info!(
+    let points = blocking({
+        let db = db.clone();
+        let session_id = session_id.clone();
+        move || db.insert_track_points_batch(&session_id, &batch.points)
+    })
+    .await?;
+    debug!(
         "batch_insert_ok session={session_id} inserted={}",
         points.len()
     );

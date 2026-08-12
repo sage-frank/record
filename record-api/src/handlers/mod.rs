@@ -13,6 +13,18 @@ pub use weight_loss::{
 };
 
 use crate::db::Database;
+use crate::error::AppError;
 
 /// 共享状态：数据库连接池的 Arc 包装
 pub type AppState = std::sync::Arc<Database>;
+
+/// 在 tokio 阻塞线程池中执行同步数据库操作，避免阻塞 async worker 线程。
+/// 用法：`blocking({ let db = db.clone(); move || db.get_sessions() }).await?`
+pub async fn blocking<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, AppError> + Send + 'static,
+) -> Result<T, AppError> {
+    let join_result = tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| AppError::Internal(format!("blocking task failed: {e}")))?;
+    join_result
+}

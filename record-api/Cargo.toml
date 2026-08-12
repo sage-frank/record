@@ -19,6 +19,8 @@ hex = "0.4"
 rand = "0.8"
 time = { version = "0.3", features = ["macros"] }
 thiserror = "2"
+r2d2 = "0.8"
+r2d2_sqlite = "0.24"
 
 
 [lints.clippy]

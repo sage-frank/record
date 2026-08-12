@@ -6,7 +6,7 @@ use super::Database;
 impl Database {
     /// 初始化异常日志表
     pub(crate) fn init_error_logs(&self) -> Result<(), AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS error_logs (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,7 +31,7 @@ impl Database {
 
     /// 插入一条异常日志
     pub fn insert_error_log(&self, input: &ErrorLogInput) -> Result<ErrorLog, AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         conn.execute(
             "INSERT INTO error_logs (request_id, level, source, message, stack_trace, context, platform, app_version, device_id, url)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -73,7 +73,7 @@ impl Database {
     /// 查询异常日志（level/request_id/source/关键词/时间范围过滤 + 分页），
     /// 返回 (当前页日志, 总数)
     pub fn query_error_logs(&self, q: &ErrorLogQuery) -> Result<(Vec<ErrorLog>, i64), AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
 
         let mut clauses: Vec<String> = Vec::new();
         let mut params: Vec<rusqlite::types::Value> = Vec::new();
@@ -136,14 +136,13 @@ impl Database {
                 rusqlite::params_from_iter(data_params.iter()),
                 error_log_from_row,
             )?
-            .filter_map(|r| r.ok())
-            .collect();
+            .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok((logs, total))
     }
 
     /// 获取单条异常日志详情
     pub fn get_error_log(&self, id: i64) -> Result<Option<ErrorLog>, AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         let mut stmt = conn.prepare(
             "SELECT id, request_id, level, source, message, stack_trace, context, platform,
                     app_version, device_id, url, created_at
@@ -179,6 +178,13 @@ fn error_log_from_row(row: &rusqlite::Row) -> rusqlite::Result<ErrorLog> {
 mod tests {
     use super::*;
 
+    /// 创建临时文件数据库（连接池多连接共享同一文件）
+    fn test_db() -> Database {
+        let path =
+            std::env::temp_dir().join(format!("record-api-error-test-{}.db", uuid::Uuid::new_v4()));
+        Database::new(path.to_str().unwrap()).unwrap()
+    }
+
     fn sample_input(request_id: &str, level: &str, source: &str, message: &str) -> ErrorLogInput {
         ErrorLogInput {
             request_id: request_id.to_string(),
@@ -196,7 +202,7 @@ mod tests {
 
     #[test]
     fn insert_and_get_error_log_should_round_trip() {
-        let db = Database::new(":memory:").unwrap();
+        let db = test_db();
         let inserted = db
             .insert_error_log(&sample_input("req-1", "error", "test", "boom"))
             .unwrap();
@@ -211,7 +217,7 @@ mod tests {
 
     #[test]
     fn query_error_logs_should_filter_by_level_and_keyword() {
-        let db = Database::new(":memory:").unwrap();
+        let db = test_db();
         db.insert_error_log(&sample_input("req-1", "error", "app", "connection refused"))
             .unwrap();
         db.insert_error_log(&sample_input("req-2", "warning", "app", "slow response"))
@@ -238,7 +244,7 @@ mod tests {
 
     #[test]
     fn query_error_logs_should_respect_pagination() {
-        let db = Database::new(":memory:").unwrap();
+        let db = test_db();
         for i in 0..5 {
             db.insert_error_log(&sample_input(&format!("req-{i}"), "error", "app", "x"))
                 .unwrap();
@@ -258,7 +264,7 @@ mod tests {
 
     #[test]
     fn get_error_log_should_return_none_for_missing_id() {
-        let db = Database::new(":memory:").unwrap();
+        let db = test_db();
         assert!(db.get_error_log(999).unwrap().is_none());
     }
 }

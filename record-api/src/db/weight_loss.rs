@@ -8,7 +8,7 @@ use super::Database;
 
 impl Database {
     pub fn get_profile(&self) -> Result<UserProfile, AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         let mut stmt = conn.prepare(
             "SELECT name, current_weight_kg, target_weight_kg, height_cm, age, gender, daily_calorie_goal, updated_at FROM user_profile WHERE id = 1"
         )?;
@@ -28,7 +28,7 @@ impl Database {
     }
 
     pub fn update_profile(&self, profile: &UserProfile) -> Result<(), AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         conn.execute(
             "UPDATE user_profile SET name=?1, current_weight_kg=?2, target_weight_kg=?3, height_cm=?4, age=?5, gender=?6, daily_calorie_goal=?7, updated_at=datetime('now') WHERE id=1",
             rusqlite::params![profile.name, profile.current_weight_kg, profile.target_weight_kg, profile.height_cm, profile.age, profile.gender, profile.daily_calorie_goal],
@@ -37,9 +37,9 @@ impl Database {
     }
 
     pub fn get_weight_history(&self) -> Result<Vec<WeightRecord>, AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         let mut stmt = conn.prepare("SELECT id, weight_kg, recorded_at FROM weight_history ORDER BY recorded_at DESC LIMIT 90")?;
-        let result: Vec<WeightRecord> = stmt
+        let result = stmt
             .query_map([], |row| {
                 Ok(WeightRecord {
                     id: row.get(0)?,
@@ -47,13 +47,12 @@ impl Database {
                     recorded_at: row.get(2)?,
                 })
             })?
-            .filter_map(|r| r.ok())
-            .collect();
+            .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(result)
     }
 
     pub fn add_weight_record(&self, input: &WeightRecordInput) -> Result<WeightRecord, AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         conn.execute(
             "INSERT INTO weight_history (weight_kg) VALUES (?1)",
             [input.weight_kg],
@@ -67,16 +66,15 @@ impl Database {
     }
 
     pub fn delete_weight_record(&self, id: i64) -> Result<(), AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         conn.execute("DELETE FROM weight_history WHERE id = ?1", [id])?;
         Ok(())
     }
 
     pub fn get_diet_records(&self, date: Option<&str>) -> Result<Vec<DietRecord>, AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         let sql = "SELECT id, date, meal_type, food_name, calories, protein_g, carbs_g, fat_g, created_at FROM diet_records";
         if let Some(d) = date {
-            // 按日期前缀匹配：兼容带时间戳的旧数据（如 2026-08-12T10:55:05）与纯日期新数据
             // 按天范围查询：>= 当天 00:00:00 且 <= 当天 23:59:59（字符串比较与时序一致）
             let start = format!("{d} 00:00:00");
             let end = format!("{d} 23:59:59");
@@ -97,11 +95,10 @@ impl Database {
                         created_at: row.get(8)?,
                     })
                 })?
-                .filter_map(|r| r.ok())
-                .collect());
+                .collect::<rusqlite::Result<Vec<_>>>()?);
         }
         let mut stmt = conn.prepare(&format!("{sql} ORDER BY created_at DESC LIMIT 100"))?;
-        let result: Vec<DietRecord> = stmt
+        let result = stmt
             .query_map([], |row| {
                 Ok(DietRecord {
                     id: row.get(0)?,
@@ -115,13 +112,12 @@ impl Database {
                     created_at: row.get(8)?,
                 })
             })?
-            .filter_map(|r| r.ok())
-            .collect();
+            .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(result)
     }
 
     pub fn add_diet_record(&self, input: &DietRecordInput) -> Result<(), AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         conn.execute(
             "INSERT OR REPLACE INTO diet_records (id, date, meal_type, food_name, calories, protein_g, carbs_g, fat_g) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
             rusqlite::params![input.id, input.date, input.meal_type, input.food_name, input.calories, input.protein_g, input.carbs_g, input.fat_g],
@@ -130,15 +126,15 @@ impl Database {
     }
 
     pub fn delete_diet_record(&self, id: &str) -> Result<(), AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         conn.execute("DELETE FROM diet_records WHERE id = ?1", [id])?;
         Ok(())
     }
 
     pub fn get_plans(&self) -> Result<Vec<ExercisePlan>, AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         let mut stmt = conn.prepare("SELECT id, name, description, target_duration_min, target_distance_km, target_calories, weekdays, is_active, created_at FROM exercise_plans ORDER BY created_at DESC")?;
-        let result: Vec<ExercisePlan> = stmt
+        let result = stmt
             .query_map([], |row| {
                 let w: String = row.get(6)?;
                 Ok(ExercisePlan {
@@ -153,13 +149,12 @@ impl Database {
                     created_at: row.get(8)?,
                 })
             })?
-            .filter_map(|r| r.ok())
-            .collect();
+            .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(result)
     }
 
     pub fn add_plan(&self, input: &ExercisePlanInput) -> Result<(), AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         let w = serde_json::to_string(&input.weekdays).unwrap_or_default();
         conn.execute(
             "INSERT OR REPLACE INTO exercise_plans (id, name, description, target_duration_min, target_distance_km, target_calories, weekdays, is_active) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
@@ -169,7 +164,7 @@ impl Database {
     }
 
     pub fn update_plan(&self, id: &str, input: &ExercisePlanInput) -> Result<(), AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         let w = serde_json::to_string(&input.weekdays).unwrap_or_default();
         conn.execute(
             "UPDATE exercise_plans SET name=?1, description=?2, target_duration_min=?3, target_distance_km=?4, target_calories=?5, weekdays=?6, is_active=?7 WHERE id=?8",
@@ -179,7 +174,7 @@ impl Database {
     }
 
     pub fn delete_plan(&self, id: &str) -> Result<(), AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         conn.execute("DELETE FROM exercise_plans WHERE id = ?1", [id])?;
         Ok(())
     }

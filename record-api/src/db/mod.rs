@@ -3,16 +3,19 @@ pub mod sessions;
 pub mod track_points;
 pub mod weight_loss;
 
-use rusqlite::Connection;
-use std::sync::{Mutex, MutexGuard};
+use r2d2::PooledConnection;
+use r2d2_sqlite::SqliteConnectionManager;
 
 use crate::error::AppError;
 
-/// SQLite 数据库封装：内部持有一个受 Mutex 保护的连接。
+/// 连接池大小：SQLite 读多写少，适度并发即可
+const POOL_MAX_SIZE: u32 = 8;
+
+/// SQLite 数据库封装：r2d2 连接池 + WAL 模式。
 /// 各领域模块（track_points / sessions / weight_loss / error_logs）
 /// 以 `impl Database` 形式拆分到对应文件中。
 pub struct Database {
-    conn: Mutex<Connection>,
+    pool: r2d2::Pool<SqliteConnectionManager>,
 }
 
 /// Haversine 公式计算两点间的球面距离（km）
@@ -27,21 +30,31 @@ pub(crate) fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
 }
 
 impl Database {
-    /// 打开（或创建）数据库并初始化全部表结构（幂等）
+    /// 打开（或创建）数据库：建立连接池（WAL 模式）并初始化全部表结构（幂等）
     pub fn new(path: &str) -> Result<Self, AppError> {
-        let conn = Connection::open(path)?;
-        let db = Database {
-            conn: Mutex::new(conn),
-        };
+        let manager = SqliteConnectionManager::file(path).with_init(|conn| {
+            // WAL：读写不互斥；synchronous=NORMAL：WAL 下崩溃安全且更快
+            conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
+            Ok(())
+        });
+        let pool = r2d2::Pool::builder()
+            .max_size(POOL_MAX_SIZE)
+            .build(manager)?;
+        let db = Database { pool };
         db.init_tables()?;
         db.init_weight_loss_tables()?;
         db.init_error_logs()?;
         Ok(db)
     }
 
+    /// 从连接池获取一个连接（每个请求独立连接，互不阻塞）
+    pub(crate) fn pool(&self) -> Result<PooledConnection<SqliteConnectionManager>, AppError> {
+        self.pool.get().map_err(AppError::Pool)
+    }
+
     /// 初始化轨迹点表
     fn init_tables(&self) -> Result<(), AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS track_points (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +77,7 @@ impl Database {
 
     /// 初始化减重模块表
     fn init_weight_loss_tables(&self) -> Result<(), AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS user_profile (
                 id                  INTEGER PRIMARY KEY DEFAULT 1,
@@ -112,16 +125,18 @@ impl Database {
         )?;
         Ok(())
     }
-
-    /// 获取数据库连接锁；锁被污染（panic 残留）时返回错误而非 panic
-    pub(crate) fn lock(&self) -> Result<MutexGuard<'_, Connection>, AppError> {
-        self.conn.lock().map_err(|_| AppError::LockPoisoned)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 创建临时文件数据库（连接池多连接共享同一文件；:memory: 每连接独立不适用）
+    fn test_db() -> Database {
+        let path =
+            std::env::temp_dir().join(format!("record-api-test-{}.db", uuid::Uuid::new_v4()));
+        Database::new(path.to_str().unwrap()).unwrap()
+    }
 
     #[test]
     fn haversine_km_should_match_known_distance() {
@@ -136,11 +151,11 @@ mod tests {
     }
 
     #[test]
-    fn database_new_should_create_error_logs_table_in_memory() {
+    fn database_new_should_create_all_tables() {
         // 新库可初始化全部表（含异常日志表），无旧表时也能直接使用
-        let db = Database::new(":memory:").unwrap();
+        let db = test_db();
         let n: i64 = db
-            .lock()
+            .pool()
             .unwrap()
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table'",

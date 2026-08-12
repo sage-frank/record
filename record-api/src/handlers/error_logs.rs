@@ -2,12 +2,12 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::error::{validation_err, AppError};
 use crate::models::error_log::{ErrorLogInput, ErrorLogQuery};
 
-use super::AppState;
+use super::{blocking, AppState};
 
 /// POST /api/errors — App 上报异常日志（签名保护）
 pub async fn add_error_log(
@@ -16,7 +16,11 @@ pub async fn add_error_log(
 ) -> Result<Json<serde_json::Value>, AppError> {
     input.validate().map_err(validation_err)?;
     input.truncate_stack_trace();
-    let log = db.insert_error_log(&input)?;
+    let log = blocking({
+        let db = db.clone();
+        move || db.insert_error_log(&input)
+    })
+    .await?;
     info!(
         "error_log_ok id={} request_id={} level={} source={}",
         log.id, log.request_id, log.level, log.source
@@ -31,18 +35,24 @@ pub async fn get_error_logs(
     State(db): State<AppState>,
     Query(query): Query<ErrorLogQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let (logs, total) = db.query_error_logs(&query)?;
-    info!(
+    let page = query.page;
+    let page_size = query.page_size;
+    let (logs, total) = blocking({
+        let db = db.clone();
+        move || db.query_error_logs(&query)
+    })
+    .await?;
+    debug!(
         "error_logs_query page={} page_size={} total={} returned={}",
-        query.page,
-        query.page_size,
+        page,
+        page_size,
         total,
         logs.len()
     );
     Ok(Json(serde_json::json!({
         "total": total,
-        "page": query.page.max(1),
-        "page_size": query.page_size.clamp(1, 100),
+        "page": page.max(1),
+        "page_size": page_size.clamp(1, 100),
         "logs": logs,
     })))
 }
@@ -52,7 +62,11 @@ pub async fn get_error_log_detail(
     State(db): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let log = db.get_error_log(id)?;
+    let log = blocking({
+        let db = db.clone();
+        move || db.get_error_log(id)
+    })
+    .await?;
     match log {
         Some(log) => Ok(Json(serde_json::json!({"found": true, "log": log}))),
         None => Ok(Json(serde_json::json!({

@@ -10,7 +10,7 @@ impl Database {
         session_id: &str,
         input: &TrackPointInput,
     ) -> Result<TrackPoint, AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         conn.execute(
             "INSERT INTO track_points (session_id, latitude, longitude, altitude, speed, steps, timestamp)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -44,7 +44,7 @@ impl Database {
         session_id: &str,
         points: &[TrackPointInput],
     ) -> Result<Vec<TrackPoint>, AppError> {
-        let conn = self.lock()?;
+        let conn = self.pool()?;
         let tx = conn.unchecked_transaction()?;
 
         let mut results = Vec::with_capacity(points.len());

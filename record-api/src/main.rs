@@ -19,7 +19,7 @@ use tracing_subscriber::EnvFilter;
 
 use db::Database;
 use handlers::*;
-use signature::{response_signature_middleware, signature_middleware, SignatureState};
+use signature::{signature_middleware, SignatureState};
 
 #[tokio::main]
 async fn main() {
@@ -116,8 +116,6 @@ async fn main() {
             signature_state.clone(),
             signature_middleware,
         ))
-        // 响应签名中间件 - 给响应添加签名头
-        .layer(axum::middleware::from_fn(response_signature_middleware))
         .layer(cors)
         .layer(trace_layer)
         .with_state(db_state);

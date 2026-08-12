@@ -9,13 +9,17 @@ use crate::models::weight_loss::{
     DietRecordInput, ExercisePlanInput, UserProfile, WeightRecordInput,
 };
 
-use super::AppState;
+use super::{blocking, AppState};
 
 // ── 档案 ──────────────────────────────────────────
 
 /// GET /api/profile
 pub async fn get_profile(State(db): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {
-    let profile = db.get_profile()?;
+    let profile = blocking({
+        let db = db.clone();
+        move || db.get_profile()
+    })
+    .await?;
     Ok(Json(serde_json::json!(profile)))
 }
 
@@ -24,7 +28,11 @@ pub async fn update_profile(
     State(db): State<AppState>,
     Json(profile): Json<UserProfile>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    db.update_profile(&profile)?;
+    blocking({
+        let db = db.clone();
+        move || db.update_profile(&profile)
+    })
+    .await?;
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
@@ -34,7 +42,11 @@ pub async fn update_profile(
 pub async fn get_weight_history(
     State(db): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let records = db.get_weight_history()?;
+    let records = blocking({
+        let db = db.clone();
+        move || db.get_weight_history()
+    })
+    .await?;
     Ok(Json(serde_json::json!({"records": records})))
 }
 
@@ -43,7 +55,11 @@ pub async fn add_weight_record(
     State(db): State<AppState>,
     Json(input): Json<WeightRecordInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let record = db.add_weight_record(&input)?;
+    let record = blocking({
+        let db = db.clone();
+        move || db.add_weight_record(&input)
+    })
+    .await?;
     Ok(Json(serde_json::json!({"record": record})))
 }
 
@@ -52,7 +68,11 @@ pub async fn delete_weight_record(
     State(db): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    db.delete_weight_record(id)?;
+    blocking({
+        let db = db.clone();
+        move || db.delete_weight_record(id)
+    })
+    .await?;
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
@@ -63,8 +83,12 @@ pub async fn get_diet_records(
     State(db): State<AppState>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let date = params.get("date").map(|s| s.as_str());
-    let records = db.get_diet_records(date)?;
+    let date = params.get("date").cloned();
+    let records = blocking({
+        let db = db.clone();
+        move || db.get_diet_records(date.as_deref())
+    })
+    .await?;
     Ok(Json(serde_json::json!({"records": records})))
 }
 
@@ -73,7 +97,11 @@ pub async fn add_diet_record(
     State(db): State<AppState>,
     Json(input): Json<DietRecordInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    db.add_diet_record(&input)?;
+    blocking({
+        let db = db.clone();
+        move || db.add_diet_record(&input)
+    })
+    .await?;
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
@@ -82,7 +110,11 @@ pub async fn delete_diet_record(
     State(db): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    db.delete_diet_record(&id)?;
+    blocking({
+        let db = db.clone();
+        move || db.delete_diet_record(&id)
+    })
+    .await?;
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
@@ -90,7 +122,11 @@ pub async fn delete_diet_record(
 
 /// GET /api/plans
 pub async fn get_plans(State(db): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {
-    let plans = db.get_plans()?;
+    let plans = blocking({
+        let db = db.clone();
+        move || db.get_plans()
+    })
+    .await?;
     Ok(Json(serde_json::json!({"plans": plans})))
 }
 
@@ -99,7 +135,11 @@ pub async fn add_plan(
     State(db): State<AppState>,
     Json(input): Json<ExercisePlanInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    db.add_plan(&input)?;
+    blocking({
+        let db = db.clone();
+        move || db.add_plan(&input)
+    })
+    .await?;
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
@@ -109,7 +149,11 @@ pub async fn update_plan(
     Path(id): Path<String>,
     Json(input): Json<ExercisePlanInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    db.update_plan(&id, &input)?;
+    blocking({
+        let db = db.clone();
+        move || db.update_plan(&id, &input)
+    })
+    .await?;
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
@@ -118,6 +162,10 @@ pub async fn delete_plan(
     State(db): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    db.delete_plan(&id)?;
+    blocking({
+        let db = db.clone();
+        move || db.delete_plan(&id)
+    })
+    .await?;
     Ok(Json(serde_json::json!({"ok": true})))
 }

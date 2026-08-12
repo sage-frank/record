@@ -13,8 +13,12 @@ pub enum AppError {
     #[error("database error: {0}")]
     Database(#[from] rusqlite::Error),
 
-    #[error("database lock poisoned")]
-    LockPoisoned,
+    #[error("connection pool error: {0}")]
+    Pool(#[from] r2d2::Error),
+
+    /// 后台阻塞任务失败（spawn_blocking JoinError 等）
+    #[error("internal error: {0}")]
+    Internal(String),
 
     /// 参数校验失败，details 为具体错误列表
     #[error("validation failed: {0:?}")]
@@ -46,8 +50,15 @@ impl IntoResponse for AppError {
                     json!({"error": "internal server error"}),
                 )
             }
-            AppError::LockPoisoned => {
-                error!("database mutex poisoned");
+            AppError::Pool(e) => {
+                error!("connection pool error: {e}");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    json!({"error": "internal server error"}),
+                )
+            }
+            AppError::Internal(msg) => {
+                error!("internal error: {msg}");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     json!({"error": "internal server error"}),
