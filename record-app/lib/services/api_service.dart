@@ -9,7 +9,6 @@ import '../utils/http_client_provider.dart';
 import '../utils/request_id_provider.dart';
 import '../utils/signature_utils.dart';
 import '../utils/debug_helper.dart';
-import 'security_service.dart';
 
 class ApiService {
   ApiService({ErrorReportRepository? errorRepository})
@@ -117,9 +116,6 @@ class ApiService {
   /// 调试模式开关 - 设置为 false 可关闭调试弹窗
   static bool debugMode = true;
 
-  /// 是否验证服务器响应签名（暂时关闭，等服务器端完善后开启）
-  static bool verifyResponseSignature = false;
-
   /// 通用签名请求方法
   Future<Map<String, dynamic>> _signedRequest({
     required String method,
@@ -184,23 +180,6 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-
-      // 验证服务器响应签名（可通过开关控制）
-      if (verifyResponseSignature && !_verifyServerResponse(response, data)) {
-        _log('❌ 服务器响应签名验证失败');
-        if (debugMode) {
-          debugPrint('❌ [SIGNATURE VERIFY FAILED] Response signature invalid');
-        }
-        throw Exception('服务器响应签名验证失败');
-      } else if (verifyResponseSignature) {
-        if (debugMode) {
-          debugPrint('✅ [RESPONSE SIGNATURE OK]');
-        }
-      }
-
-      if (debugMode && !verifyResponseSignature) {
-        debugPrint('⚠️  [RESPONSE SIGNATURE SKIPPED] 验证已禁用');
-      }
 
       if (debugMode) {
         debugPrint('✅ [REQUEST SUCCESS] $method $url');
@@ -288,41 +267,6 @@ class ApiService {
     );
   }
 
-  /// 验证服务器响应
-  bool _verifyServerResponse(http.Response response, Map<String, dynamic> bodyData) {
-    final signature = response.headers['x-server-signature'] ?? '';
-    final timestamp = response.headers['x-timestamp'] ?? '';
-    final nonce = response.headers['x-nonce'] ?? '';
-
-    if (signature.isEmpty || timestamp.isEmpty || nonce.isEmpty) {
-      _log('服务器响应缺少签名信息');
-      return false;
-    }
-
-    // 检查Nonce重放攻击
-    if (SecurityService.instance.isNonceUsed(nonce)) {
-      _log('检测到可能的重放攻击，Nonce已使用: $nonce');
-      return false;
-    }
-
-    // 标记Nonce为已使用
-    SecurityService.instance.markNonceUsed(nonce);
-
-    // 验证签名
-    final isValid = SignatureUtils.verifyResponseSignature(
-      serverSignature: signature,
-      timestamp: timestamp,
-      nonce: nonce,
-      body: bodyData,
-    );
-
-    if (!isValid) {
-      _log('服务器响应签名验证失败');
-    }
-
-    return isValid;
-  }
-
   Future<void> _reportDebugEvent({
     required String hypothesisId,
     required String msg,
@@ -385,12 +329,6 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-
-        // 验证服务器响应签名
-        if (!_verifyServerResponse(response, data)) {
-          _log('服务器响应签名验证失败');
-          throw Exception('服务器响应签名验证失败');
-        }
 
         _log('上传成功');
         return data;

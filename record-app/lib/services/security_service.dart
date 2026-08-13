@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/error_reporter.dart';
-import '../utils/signature_utils.dart';
 
 /// 安全管理服务 - 密钥和敏感信息管理
 class SecurityService {
@@ -85,16 +84,6 @@ class SecurityService {
     if (kDebugMode) {
       print('🔒 安全数据已清理，删除 ${keysToRemove.length} 项');
     }
-  }
-
-  /// 标记Nonce已使用（防止重放攻击）
-  void markNonceUsed(String nonce) {
-    NonceManager.markNonceUsed(nonce);
-  }
-
-  /// 检查Nonce是否已使用
-  bool isNonceUsed(String nonce) {
-    return NonceManager.isNonceUsed(nonce);
   }
 
   /// 数据混淆（基础保护，生产环境建议更强加密）
